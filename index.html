@@ -1,0 +1,2979 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HTTP vs HTTPS 통신 과정 인터랙티브 시각화</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts: Inter, Noto Sans KR, JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind Configuration -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Noto Sans KR"', 'Inter', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          animation: {
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* 기본 스크롤바 및 부드러운 전환 스타일 */
+    body {
+      font-family: 'Noto Sans KR', 'Inter', sans-serif;
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    /* 패킷 이동 애니메이션 */
+    @keyframes packetRight {
+      0% { left: 8%; opacity: 0; transform: translateY(-50%) scale(0.85); }
+      15% { opacity: 1; transform: translateY(-50%) scale(1); }
+      85% { opacity: 1; transform: translateY(-50%) scale(1); }
+      100% { left: 92%; opacity: 0; transform: translateY(-50%) scale(0.85); }
+    }
+
+    @keyframes packetLeft {
+      0% { left: 92%; opacity: 0; transform: translateY(-50%) scale(0.85); }
+      15% { opacity: 1; transform: translateY(-50%) scale(1); }
+      85% { opacity: 1; transform: translateY(-50%) scale(1); }
+      100% { left: 8%; opacity: 0; transform: translateY(-50%) scale(0.85); }
+    }
+
+    @keyframes packetLocal {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); }
+      50% { transform: translate(-50%, -50%) scale(1.12); }
+    }
+
+    .animate-packet-right {
+      animation: packetRight 1.8s cubic-bezier(0.25, 0.8, 0.25, 1) infinite;
+    }
+
+    .animate-packet-left {
+      animation: packetLeft 1.8s cubic-bezier(0.25, 0.8, 0.25, 1) infinite;
+    }
+
+    .animate-packet-local {
+      animation: packetLocal 1.5s ease-in-out infinite;
+    }
+
+    /* 커스텀 스크롤바 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.35);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.55);
+    }
+  </style>
+</head>
+
+<body class="bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 min-h-screen flex flex-col selection:bg-indigo-500 selection:text-white">
+
+  <!-- 상단 헤더 영역 -->
+  <header class="sticky top-0 z-30 backdrop-blur-md bg-white/85 dark:bg-slate-900/85 border-b border-slate-200 dark:border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
+      <!-- 로고 및 타이틀 -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+            HTTP vs HTTPS 통신 과정 시각화
+            <span class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300">
+              Interactive Lab
+            </span>
+          </h1>
+          <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+            요청(Request)과 응답(Response) 사이의 핸드셰이크, 암호화 및 보안 차이 비교
+          </p>
+        </div>
+      </div>
+
+      <!-- 우측 내비게이션 탭 & 테마 전환 버튼 -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <nav class="flex flex-wrap bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700" role="tablist">
+          <button onclick="switchTab('simulator')" id="tab-simulator" class="tab-btn px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm">
+            통신 시뮬레이터
+          </button>
+          <button onclick="switchTab('osi')" id="tab-osi" class="tab-btn px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all">
+            OSI 7계층 보안
+          </button>
+          <button onclick="switchTab('ports')" id="tab-ports" class="tab-btn px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all">
+            Well-Known 포트
+          </button>
+          <button onclick="switchTab('tcpudp')" id="tab-tcpudp" class="tab-btn px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all">
+            TCP vs UDP
+          </button>
+          <button onclick="switchTab('server')" id="tab-server" class="tab-btn px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all">
+            웹서버 vs WAS
+          </button>
+          <button onclick="switchTab('crypto')" id="tab-crypto" class="tab-btn px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all">
+            암호화 원리 (TLS)
+          </button>
+          <button onclick="switchTab('compare')" id="tab-compare" class="tab-btn px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all">
+            핵심 비교 & 퀴즈
+          </button>
+        </nav>
+
+        <!-- 다크/라이트 모드 토글 -->
+        <button onclick="toggleTheme()" aria-label="테마 변경" class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors">
+          <svg id="icon-sun" class="w-5 h-5 hidden dark:block text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+          <svg id="icon-moon" class="w-5 h-5 block dark:hidden text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 메인 콘텐츠 컨테이너 -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- ===================================================================== -->
+    <!-- TAB 1: 실시간 통신 시뮬레이터 (HTTP vs HTTPS Side-by-Side)              -->
+    <!-- ===================================================================== -->
+    <section id="view-simulator" class="space-y-6">
+      
+      <!-- 시뮬레이션 제어 컨트롤 바 -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+        
+        <!-- 전송 데이터 시나리오 선택 & 스니핑 토글 -->
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2">
+            <label for="scenario-select" class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">전송 시나리오:</label>
+            <select id="scenario-select" onchange="changeScenario()" class="rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="login">🔐 로그인 요청 (ID / 비밀번호 전송)</option>
+              <option value="payment">💳 결제 승인 요청 (카드번호 / CVC 전송)</option>
+              <option value="api">📄 개인정보 API 조회 (Authorization 토큰)</option>
+            </select>
+          </div>
+
+          <!-- 중간자 공격(MITM 스니퍼) 감시 모드 스위치 -->
+          <button onclick="toggleSniffer()" id="sniffer-toggle-btn" class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800/60 shadow-sm">
+            <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+            <span>중간자(해커) 패킷 감청: <strong id="sniffer-status-text">ON</strong></span>
+          </button>
+        </div>
+
+        <!-- 단계 재생 컨트롤러 -->
+        <div class="flex items-center justify-between sm:justify-end gap-2">
+          <div class="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+            <button onclick="prevStep()" id="btn-prev" class="p-2 rounded-lg hover:bg-white dark:hover:bg-slate-700 disabled:opacity-40 transition-colors" title="이전 단계">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <button onclick="togglePlay()" id="btn-play" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold shadow-sm transition-colors">
+              <svg id="icon-play" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/></svg>
+              <svg id="icon-pause" class="w-4 h-4 hidden" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+              <span id="btn-play-text">자동 재생</span>
+            </button>
+            <button onclick="nextStep()" id="btn-next" class="p-2 rounded-lg hover:bg-white dark:hover:bg-slate-700 disabled:opacity-40 transition-colors" title="다음 단계">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+
+          <button onclick="resetSimulation()" class="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs sm:text-sm font-medium border border-slate-200 dark:border-slate-700 transition-colors">
+            초기화
+          </button>
+        </div>
+      </div>
+
+      <!-- 타임라인 진행 바 (Step 0 ~ Step 7) -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">통신 타임라인 단계 (클릭하여 특정 단계로 이동)</span>
+          <span id="step-counter-badge" class="text-xs font-mono font-semibold px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300">
+            Step 1 / 8
+          </span>
+        </div>
+        <div id="timeline-pills" class="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+          <!-- JS로 8단계 버튼 동적 렌더링 -->
+        </div>
+      </div>
+
+      <!-- 메인 비교 무대: 좌측 HTTP vs 우측 HTTPS -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- ==================== LEFT: HTTP (비보안 평문 통신) ==================== -->
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border-2 border-rose-200/80 dark:border-rose-900/50 shadow-sm overflow-hidden flex flex-col">
+          <!-- 카드 헤더 -->
+          <div class="px-5 py-3.5 bg-rose-50/80 dark:bg-rose-950/30 border-b border-rose-200/70 dark:border-rose-900/50 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="p-1.5 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                </svg>
+              </span>
+              <div>
+                <h2 class="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
+                  HTTP <span class="text-xs font-mono font-normal px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300">Port 80</span>
+                </h2>
+                <p class="text-xs text-rose-600 dark:text-rose-400">암호화 없음 · 평문(Plaintext) 전송</p>
+              </div>
+            </div>
+            <span id="http-phase-badge" class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+              TCP 연결
+            </span>
+          </div>
+
+          <!-- 네트워크 다이어그램 애니메이션 무대 (HTTP) -->
+          <div class="p-5 relative bg-gradient-to-b from-slate-50/50 to-white dark:from-slate-900/50 dark:to-slate-900 border-b border-slate-200 dark:border-slate-800">
+            <div class="flex items-center justify-between relative py-6">
+              <!-- 클라이언트 노드 -->
+              <div class="z-10 flex flex-col items-center w-20 sm:w-24 text-center">
+                <div class="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center shadow-sm">
+                  <svg class="w-6 h-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                </div>
+                <span class="mt-1.5 text-xs font-bold">클라이언트</span>
+                <span class="text-[10px] text-slate-400">Browser</span>
+              </div>
+
+              <!-- 중앙 연결선 & 스니퍼 & 이동 패킷 -->
+              <div class="flex-1 relative h-16 flex items-center justify-center mx-2">
+                <!-- 점선 연결선 -->
+                <div class="w-full border-t-2 border-dashed border-rose-300 dark:border-rose-800/80"></div>
+                
+                <!-- 중간자 공격자(스니퍼) 아이콘 -->
+                <div id="http-sniffer-node" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center transition-opacity duration-300">
+                  <div id="http-sniffer-box" class="px-2.5 py-1 rounded-xl bg-rose-100 dark:bg-rose-950 border border-rose-400 dark:border-rose-700 text-rose-700 dark:text-rose-300 shadow-md flex items-center gap-1 text-[11px] font-bold">
+                    <span>🕵️‍♂️ 스니퍼</span>
+                  </div>
+                </div>
+
+                <!-- 움직이는 패킷 알약 (HTTP) -->
+                <div id="http-moving-packet" class="absolute top-1/2 z-20 px-2.5 py-1 rounded-lg bg-rose-600 text-white text-[11px] font-mono font-bold shadow-lg whitespace-nowrap animate-packet-right">
+                  SYN
+                </div>
+              </div>
+
+              <!-- 서버 노드 -->
+              <div class="z-10 flex flex-col items-center w-20 sm:w-24 text-center">
+                <div class="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center shadow-sm">
+                  <svg class="w-6 h-6 text-slate-600 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
+                </div>
+                <span class="mt-1.5 text-xs font-bold">웹 서버</span>
+                <span class="text-[10px] text-slate-400">HTTP Server</span>
+              </div>
+            </div>
+
+            <!-- HTTP 현재 상태 요약 박스 -->
+            <div id="http-step-summary" class="mt-2 p-3 rounded-xl bg-rose-50/60 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 text-xs leading-relaxed">
+              <!-- JS 동적 업데이트 -->
+            </div>
+          </div>
+
+          <!-- HTTP 패킷 로그 리스트 -->
+          <div class="p-4 flex-1 flex flex-col justify-between space-y-3">
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">네트워크 전송 패킷 (Wire Data)</span>
+                <span id="http-security-tag" class="text-[11px] font-semibold text-rose-500">⚠️ 평문 노출 위험</span>
+              </div>
+              <pre id="http-wire-data" class="p-3 rounded-xl bg-slate-900 text-rose-300 font-mono text-xs overflow-x-auto border border-slate-800 leading-relaxed"></pre>
+            </div>
+
+            <!-- 스니퍼 감청 결과 (HTTP) -->
+            <div id="http-sniffer-panel" class="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-bold text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
+                  🚨 해커(스니퍼)가 가로챈 내용
+                </span>
+                <span id="http-sniffer-verdict" class="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-600 text-white">탈취 성공</span>
+              </div>
+              <p id="http-sniffer-output" class="text-xs font-mono text-rose-800 dark:text-rose-200 break-all"></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================== RIGHT: HTTPS (TLS 암호화 보안 통신) ==================== -->
+        <div class="bg-white dark:bg-slate-900 rounded-2xl border-2 border-emerald-200/80 dark:border-emerald-900/50 shadow-sm overflow-hidden flex flex-col">
+          <!-- 카드 헤더 -->
+          <div class="px-5 py-3.5 bg-emerald-50/80 dark:bg-emerald-950/30 border-b border-emerald-200/70 dark:border-emerald-900/50 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </span>
+              <div>
+                <h2 class="font-bold text-slate-900 dark:text-white text-base flex items-center gap-2">
+                  HTTPS <span class="text-xs font-mono font-normal px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">Port 443</span>
+                </h2>
+                <p class="text-xs text-emerald-600 dark:text-emerald-400">HTTP + TLS/SSL 암호화 · 인증서 검증</p>
+              </div>
+            </div>
+            <span id="https-phase-badge" class="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+              TCP 연결
+            </span>
+          </div>
+
+          <!-- 네트워크 다이어그램 애니메이션 무대 (HTTPS) -->
+          <div class="p-5 relative bg-gradient-to-b from-slate-50/50 to-white dark:from-slate-900/50 dark:to-slate-900 border-b border-slate-200 dark:border-slate-800">
+            <div class="flex items-center justify-between relative py-6">
+              <!-- 클라이언트 노드 -->
+              <div class="z-10 flex flex-col items-center w-20 sm:w-24 text-center">
+                <div class="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-emerald-400/50 flex items-center justify-center shadow-sm relative">
+                  <svg class="w-6 h-6 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                  <span id="client-key-badge" class="hidden absolute -bottom-1.5 -right-1.5 px-1.5 py-0.5 rounded-md bg-amber-500 text-white text-[9px] font-bold shadow">🔑대칭키</span>
+                </div>
+                <span class="mt-1.5 text-xs font-bold">클라이언트</span>
+                <span class="text-[10px] text-emerald-500 font-medium">CA 루트키 보유</span>
+              </div>
+
+              <!-- 중앙 보안 터널 & 스니퍼 & 이동 패킷 -->
+              <div class="flex-1 relative h-16 flex items-center justify-center mx-2">
+                <!-- TLS 암호화 터널 배경 (핸드셰이크 완료 시 활성화) -->
+                <div id="tls-tunnel-bar" class="w-full h-7 rounded-full border border-dashed border-emerald-400/60 bg-emerald-500/5 flex items-center justify-center transition-all duration-500">
+                  <span id="tls-tunnel-label" class="text-[10px] font-mono text-emerald-600/70 dark:text-emerald-400/70 tracking-wider uppercase">TLS Handshake 진행 중</span>
+                </div>
+                
+                <!-- 중간자 공격자(스니퍼) 아이콘 -->
+                <div id="https-sniffer-node" class="absolute -top-3 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center transition-opacity duration-300">
+                  <div class="px-2 py-0.5 rounded-lg bg-slate-200 dark:bg-slate-800 border border-slate-400 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-[10px] font-semibold flex items-center gap-1">
+                    <span>🕵️‍♂️ 스니퍼 (차단됨)</span>
+                  </div>
+                </div>
+
+                <!-- 움직이는 패킷 알약 (HTTPS) -->
+                <div id="https-moving-packet" class="absolute top-1/2 z-20 px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-mono font-bold shadow-lg whitespace-nowrap animate-packet-right">
+                  SYN
+                </div>
+              </div>
+
+              <!-- 서버 노드 -->
+              <div class="z-10 flex flex-col items-center w-20 sm:w-24 text-center">
+                <div class="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-emerald-400/50 flex items-center justify-center shadow-sm relative">
+                  <svg class="w-6 h-6 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
+                  <span id="server-key-badge" class="absolute -bottom-1.5 -right-1.5 px-1.5 py-0.5 rounded-md bg-indigo-600 text-white text-[9px] font-bold shadow">📜인증서/개인키</span>
+                </div>
+                <span class="mt-1.5 text-xs font-bold">웹 서버</span>
+                <span class="text-[10px] text-emerald-500 font-medium">HTTPS Server</span>
+              </div>
+            </div>
+
+            <!-- HTTPS 현재 상태 요약 박스 -->
+            <div id="https-step-summary" class="mt-2 p-3 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-900/40 text-xs leading-relaxed">
+              <!-- JS 동적 업데이트 -->
+            </div>
+          </div>
+
+          <!-- HTTPS 패킷 로그 리스트 -->
+          <div class="p-4 flex-1 flex flex-col justify-between space-y-3">
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">네트워크 전송 패킷 (TLS Record)</span>
+                <span id="https-security-tag" class="text-[11px] font-semibold text-emerald-500">🔒 보안 보호됨</span>
+              </div>
+              <pre id="https-wire-data" class="p-3 rounded-xl bg-slate-900 text-emerald-300 font-mono text-xs overflow-x-auto border border-slate-800 leading-relaxed"></pre>
+            </div>
+
+            <!-- 스니퍼 감청 결과 (HTTPS) -->
+            <div id="https-sniffer-panel" class="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                  🛡️ 해커(스니퍼) 화면 (해독 불가)
+                </span>
+                <span id="https-sniffer-verdict" class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-600 text-white">안전하게 보호됨</span>
+              </div>
+              <p id="https-sniffer-output" class="text-xs font-mono text-emerald-800 dark:text-emerald-200 break-all"></p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 하단 심화 해설 카드 (현재 단계의 핵심 포인트) -->
+      <div class="bg-indigo-50/70 dark:bg-indigo-950/25 rounded-2xl p-4 sm:p-5 border border-indigo-200/80 dark:border-indigo-900/50 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+        <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 font-bold text-sm shadow">
+          TIP
+        </div>
+        <div class="space-y-1">
+          <h3 id="deep-dive-title" class="text-sm sm:text-base font-bold text-indigo-950 dark:text-indigo-200">
+            단계별 핵심 비교 인사이트
+          </h3>
+          <p id="deep-dive-desc" class="text-xs sm:text-sm text-indigo-900/80 dark:text-indigo-300/90 leading-relaxed">
+            HTTP는 TCP 연결 직후 바로 평문 데이터를 주고받지만, HTTPS는 신뢰할 수 있는 연결을 위해 TLS 핸드셰이크 과정을 추가로 거칩니다.
+          </p>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 2: HTTPS 하이브리드 암호화 & 인증서 원리 시각화                      -->
+    <!-- ===================================================================== -->
+    <section id="view-crypto" class="hidden space-y-6">
+      
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div class="max-w-3xl">
+          <span class="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 mb-2">
+            Hybrid Cryptography
+          </span>
+          <h2 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+            왜 HTTPS는 '비대칭키'와 '대칭키'를 모두 사용할까요?
+          </h2>
+          <p class="mt-2 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            HTTPS는 두 가지 암호화 방식의 장점만을 결합한 <strong>하이브리드 암호화(Hybrid Encryption)</strong> 방식을 사용합니다. 아래 카드를 클릭해 각 단계가 해결하는 보안 문제를 확인해 보세요.
+          </p>
+        </div>
+
+        <!-- 3단계 원리 카드 그리드 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mt-6">
+          
+          <!-- 1단계: CA 인증서 검증 -->
+          <div class="rounded-2xl p-5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col justify-between space-y-4">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold flex items-center justify-center text-sm">1</span>
+                <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">신원 인증 (Authentication)</span>
+              </div>
+              <h3 class="text-base font-bold text-slate-900 dark:text-white mb-2">CA 디지털 인증서 검증</h3>
+              <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                해커가 가짜 서버를 만들어 공개키를 보낼 수 있습니다. 이를 막기 위해 공인 인증기관(<strong>CA</strong>)이 자신의 개인키로 서명한 <strong>SSL/TLS 인증서</strong>를 서버에 발급합니다.
+              </p>
+            </div>
+            <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs space-y-1.5">
+              <div class="font-semibold text-amber-600 dark:text-amber-400">🔍 브라우저의 검증 방법</div>
+              <p class="text-slate-500 dark:text-slate-400">브라우저에 미리 내장된 <strong>CA의 공개키</strong>로 인증서 서명을 복호화하여 진짜 서버인지 100% 확인합니다.</p>
+            </div>
+          </div>
+
+          <!-- 2단계: 비대칭키 암호화로 키 교환 -->
+          <div class="rounded-2xl p-5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col justify-between space-y-4">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="w-8 h-8 rounded-lg bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 font-bold flex items-center justify-center text-sm">2</span>
+                <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">안전한 키 배송 (Key Exchange)</span>
+              </div>
+              <h3 class="text-base font-bold text-slate-900 dark:text-white mb-2">비대칭키(공개키/개인키) 활용</h3>
+              <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                비대칭키는 보안이 뛰어나지만 연산 속도가 느려 대용량 웹 데이터 전송에는 부적합합니다. 따라서 <strong>초기 대칭키(세션키)를 안전하게 공유할 때만</strong> 사용합니다.
+              </p>
+            </div>
+            <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs space-y-1.5">
+              <div class="font-semibold text-indigo-600 dark:text-indigo-400">🔑 공개키 잠금 → 개인키 해제</div>
+              <p class="text-slate-500 dark:text-slate-400">클라이언트가 <strong>서버의 공개키</strong>로 키 재료를 암호화해 보내면, 오직 <strong>서버의 개인키</strong>로만 풀 수 있습니다.</p>
+            </div>
+          </div>
+
+          <!-- 3단계: 대칭키 암호화로 본문 통신 -->
+          <div class="rounded-2xl p-5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col justify-between space-y-4">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold flex items-center justify-center text-sm">3</span>
+                <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">고속 데이터 암호화 (AES)</span>
+              </div>
+              <h3 class="text-base font-bold text-slate-900 dark:text-white mb-2">대칭키(세션키) 기반 HTTP 통신</h3>
+              <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                핸드셰이크가 끝나면 클라이언트와 서버 모두 동일한 <strong>대칭키(Session Key)</strong>를 갖게 됩니다. 이후 모든 HTTP 요청과 응답은 이 대칭키로 초고속 암호화됩니다.
+              </p>
+            </div>
+            <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs space-y-1.5">
+              <div class="font-semibold text-emerald-600 dark:text-emerald-400">⚡ 속도 + 보안 + 무결성 동시 달성</div>
+              <p class="text-slate-500 dark:text-slate-400">AES-GCM 같은 현대 암호화 알고리즘은 암호화와 동시에 데이터가 중간에 변조되지 않았는지(MAC) 검증합니다.</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 인터랙티브 암호화 체험 미니 샌드박스 -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
+        <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-1">🧪 직접 해보는 평문 vs TLS 암호화 변환기</h3>
+        <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mb-4">아래 입력창에 민감한 메시지를 입력하면 HTTP 전송 데이터와 HTTPS(AES-256-GCM) 암호화 패킷의 차이를 실시간으로 확인할 수 있습니다.</p>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+          <div class="flex flex-col">
+            <label for="sandbox-input" class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">1. 사용자가 전송할 원본 메시지</label>
+            <textarea id="sandbox-input" oninput="updateCryptoSandbox()" rows="3" class="w-full flex-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 p-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500">user_id=kim_dev&password=SuperSecret2026!</textarea>
+          </div>
+
+          <div class="flex flex-col">
+            <span class="text-xs font-semibold text-rose-500 mb-1.5">2. HTTP 패킷 (네트워크에 그대로 노출)</span>
+            <div id="sandbox-http-out" class="flex-1 rounded-xl bg-rose-950/90 text-rose-200 p-3 text-xs font-mono border border-rose-800 break-all leading-relaxed"></div>
+          </div>
+
+          <div class="flex flex-col">
+            <span class="text-xs font-semibold text-emerald-500 mb-1.5">3. HTTPS 패킷 (세션키로 암호화된 TLS 레코드)</span>
+            <div id="sandbox-https-out" class="flex-1 rounded-xl bg-slate-950 text-emerald-400 p-3 text-xs font-mono border border-emerald-800/70 break-all leading-relaxed"></div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 3: HTTP vs HTTPS 핵심 비교표 & 이해도 확인 퀴즈                     -->
+    <!-- ===================================================================== -->
+    <section id="view-compare" class="hidden space-y-6">
+      
+      <!-- 요약 비교 테이블 -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div class="p-5 sm:p-6 border-b border-slate-200 dark:border-slate-800">
+          <h2 class="text-xl font-bold text-slate-900 dark:text-white">HTTP vs HTTPS 한눈에 비교하기</h2>
+          <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">보안성, 통신 절차, 성능 및 웹 표준 측면에서의 핵심 차이점입니다.</p>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <th class="py-3.5 px-5 font-bold">비교 항목</th>
+                <th class="py-3.5 px-5 font-bold text-rose-600 dark:text-rose-400">HTTP (HyperText Transfer Protocol)</th>
+                <th class="py-3.5 px-5 font-bold text-emerald-600 dark:text-emerald-400">HTTPS (HTTP Secure)</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-200 dark:divide-slate-800 text-xs sm:text-sm">
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                <td class="py-4 px-5 font-semibold text-slate-900 dark:text-white">기본 포트 번호</td>
+                <td class="py-4 px-5 font-mono">80번 포트 (Port 80)</td>
+                <td class="py-4 px-5 font-mono text-emerald-600 dark:text-emerald-400 font-semibold">443번 포트 (Port 443)</td>
+              </tr>
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                <td class="py-4 px-5 font-semibold text-slate-900 dark:text-white">데이터 암호화</td>
+                <td class="py-4 px-5">❌ 암호화 없음 (누구나 읽을 수 있는 평문 전송)</td>
+                <td class="py-4 px-5">✅ TLS/SSL 프로토콜을 통한 종단간 암호화</td>
+              </tr>
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                <td class="py-4 px-5 font-semibold text-slate-900 dark:text-white">추가 핸드셰이크</td>
+                <td class="py-4 px-5">TCP 3-Way Handshake만 수행</td>
+                <td class="py-4 px-5">TCP Handshake + <strong>TLS Handshake</strong> 수행</td>
+              </tr>
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                <td class="py-4 px-5 font-semibold text-slate-900 dark:text-white">서버 신원 인증</td>
+                <td class="py-4 px-5">불가능 (피싱/위조 사이트 판별 불가)</td>
+                <td class="py-4 px-5">CA(공인인증기관) 발급 디지털 인증서로 신원 보증</td>
+              </tr>
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                <td class="py-4 px-5 font-semibold text-slate-900 dark:text-white">데이터 무결성</td>
+                <td class="py-4 px-5">중간에 패킷이 변조되어도 탐지 어려움</td>
+                <td class="py-4 px-5">메시지 인증 코드(MAC/AEAD)로 위변조 즉시 차단</td>
+              </tr>
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                <td class="py-4 px-5 font-semibold text-slate-900 dark:text-white">연결 속도 및 성능</td>
+                <td class="py-4 px-5">초기 연결이 단순하나 HTTP/2·3 최신 기능 제약</td>
+                <td class="py-4 px-5">초기 TLS 왕복(TLS 1.3 기준 1-RTT)이 있으나 HTTP/2·3 지원으로 실제 로딩은 더 빠름</td>
+              </tr>
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                <td class="py-4 px-5 font-semibold text-slate-900 dark:text-white">SEO 및 브라우저 표시</td>
+                <td class="py-4 px-5">주소창에 <strong>'주의 요함'</strong> 경고 표시, 검색 순위 불이익</td>
+                <td class="py-4 px-5">보안 연결 표시, 구글 검색 엔진 최적화(SEO) 가산점</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 인터랙티브 개념 확인 퀴즈 -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white">🎯 핵심 개념 체크 퀴즈</h3>
+            <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400">방금 살펴본 HTTP와 HTTPS의 동작 원리를 간단한 퀴즈로 점검해 보세요.</p>
+          </div>
+          <span id="quiz-score-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300">
+            정답: 0 / 42
+          </span>
+        </div>
+
+        <div id="quiz-container" class="space-y-4">
+          <!-- JS로 퀴즈 렌더링 -->
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 4: OSI 7계층에서 HTTPS의 위치와 보안 메커니즘 시각화                -->
+    <!-- ===================================================================== -->
+    <section id="view-osi" class="hidden space-y-6">
+      
+      <!-- 상단 핵심 개념 요약 배너 -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div class="max-w-3xl space-y-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300">
+              <span>OSI 7-Layer Architecture</span>
+              <span>·</span>
+              <span>L7 (HTTP) + L6/L5 (TLS/SSL)</span>
+            </div>
+            <h2 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              HTTPS는 OSI 7계층의 어디에 있고, 어떻게 보안을 수행할까요?
+            </h2>
+            <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              순수 <strong>HTTP</strong>는 최상위 <strong>7계층(응용 계층)</strong> 프로토콜입니다. 여기에 보안을 더한 <strong>HTTPS</strong>는 전송 계층(4계층 TCP)과 응용 계층(7계층 HTTP) 사이에 <strong>TLS/SSL 프로토콜(주로 6계층 표현 계층 · 5계층 세션 계층 역할)</strong>을 끼워 넣어 7계층 데이터 전체를 암호화합니다.
+            </p>
+          </div>
+
+          <!-- 계층 구조 미니 도식 -->
+          <div class="shrink-0 bg-slate-50 dark:bg-slate-800/80 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs font-mono space-y-1.5 min-w-[250px]">
+            <div class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-bold flex justify-between">
+              <span>L7 응용 계층</span>
+              <span>HTTP (메시지)</span>
+            </div>
+            <div class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold flex justify-between shadow-sm">
+              <span>L6·L5 표현/세션</span>
+              <span>🔒 TLS/SSL</span>
+            </div>
+            <div class="px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 flex justify-between">
+              <span>L4 전송 계층</span>
+              <span>TCP (Port 443)</span>
+            </div>
+            <div class="px-3 py-1 rounded-lg text-center text-[11px] text-slate-400">
+              L3 네트워크(IP) → L2 링크 → L1 물리
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 메인 인터랙티브 영역: 좌측 OSI 7계층 스택 vs 우측 선택 계층 상세 & 패킷 캡슐화 -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- 좌측 (5 cols): 클릭 가능한 OSI 7계층 스택 다이어그램 -->
+        <div class="lg:col-span-5 bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-base font-bold text-slate-900 dark:text-white">OSI 7계층 스택 (클릭하여 탐색)</h3>
+              <span class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">🔒 L5~L7 보안 구간</span>
+            </div>
+            <div id="osi-layer-stack" class="space-y-2">
+              <!-- JS로 L7 ~ L1 계층 버튼 렌더링 -->
+            </div>
+          </div>
+
+          <div class="mt-4 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            💡 <strong>실무 관점 참고:</strong> 현대 TCP/IP 4계층 모델에서는 L5·L6·L7을 하나의 <strong>응용 계층(Application Layer)</strong>으로 통합해 부르며, TLS를 <strong>4.5계층(전송 계층 위 보안 계층)</strong>으로 설명하기도 합니다.
+          </div>
+        </div>
+
+        <!-- 우측 (7 cols): 선택된 계층 보안 메커니즘 상세 + 캡슐화 패킷 투시기 -->
+        <div class="lg:col-span-7 space-y-6">
+          
+          <!-- 1) 선택 계층 보안 원리 상세 카드 -->
+          <div id="osi-detail-card" class="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <!-- JS 동적 업데이트 -->
+          </div>
+
+          <!-- 2) 계층별 캡슐화(Encapsulation) & 해커 가시성 비교 카드 -->
+          <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 class="text-base font-bold text-slate-900 dark:text-white">📦 계층별 패킷 캡슐화 & 암호화 범위</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">네트워크를 흐르는 실제 프레임 내부에서 어디까지 암호화되는지 비교해 보세요.</p>
+              </div>
+              <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300">
+                L6 TLS 레코드 보호 범위
+              </span>
+            </div>
+
+            <!-- HTTP 캡슐화 구조 -->
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-bold text-rose-600 dark:text-rose-400">HTTP 패킷 (Port 80) — 모든 계층 평문 노출</span>
+                <span class="text-[11px] text-rose-500">URL 경로·쿠키·본문 모두 해독 가능</span>
+              </div>
+              <div class="grid grid-cols-12 gap-1 text-[11px] font-mono text-center">
+                <div class="col-span-2 p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                  <div class="font-bold">L2 MAC</div>
+                  <div class="text-[9px] opacity-75">노출</div>
+                </div>
+                <div class="col-span-2 p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                  <div class="font-bold">L3 IP</div>
+                  <div class="text-[9px] opacity-75">노출</div>
+                </div>
+                <div class="col-span-2 p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                  <div class="font-bold">L4 TCP</div>
+                  <div class="text-[9px] opacity-75">:80 노출</div>
+                </div>
+                <div class="col-span-6 p-2 rounded-lg bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-400 dark:border-rose-700">
+                  <div class="font-bold">⚠️ L7 HTTP 헤더 + 본문</div>
+                  <div class="text-[9px]">GET /mypage, Cookie, PW 평문 노출!</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- HTTPS 캡슐화 구조 -->
+            <div class="space-y-1.5 pt-2">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-bold text-emerald-600 dark:text-emerald-400">HTTPS 패킷 (Port 443) — L6 TLS가 L7 전체를 암호화</span>
+                <span class="text-[11px] text-emerald-500">URL 경로·쿠키·본문 완벽 암호화</span>
+              </div>
+              <div class="grid grid-cols-12 gap-1 text-[11px] font-mono text-center">
+                <div class="col-span-2 p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                  <div class="font-bold">L2 MAC</div>
+                  <div class="text-[9px] opacity-75">라우팅용</div>
+                </div>
+                <div class="col-span-2 p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                  <div class="font-bold">L3 IP</div>
+                  <div class="text-[9px] opacity-75">라우팅용</div>
+                </div>
+                <div class="col-span-2 p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                  <div class="font-bold">L4 TCP</div>
+                  <div class="text-[9px] opacity-75">:443 포트</div>
+                </div>
+                <div class="col-span-6 p-2 rounded-lg bg-emerald-600 text-white border border-emerald-400 shadow-sm">
+                  <div class="font-bold">🔒 L6 TLS 암호화 (L7 전체 + MAC)</div>
+                  <div class="text-[9px] text-emerald-100">HTTP 헤더·URL 경로·쿠키·본문 모두 암호문!</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 보안 인사이트 요약 -->
+            <div class="p-3 rounded-xl bg-amber-50/80 dark:bg-amber-950/25 border border-amber-200 dark:border-amber-800/50 text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
+              <strong>🔍 무엇이 보이고 무엇이 숨겨지나요?</strong><br/>
+              패킷 배달을 위해 <strong>L3 IP 주소</strong>, <strong>L4 포트(443)</strong>, 그리고 초기 핸드셰이크의 <strong>도메인 이름(SNI)</strong>은 외부에서 볼 수 있습니다. 하지만 <strong>L6 표현 계층의 TLS 암호화</strong> 덕분에 도메인 뒤의 <strong>상세 URL 경로(예: <code>/account/transfer</code>), 쿼리 파라미터, 쿠키, 인증 토큰, POST 본문</strong>은 100% 암호화되어 제3자가 절대 볼 수 없습니다.
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 5: Well-Known 포트(0~1023) 체계 및 HTTP(80) vs HTTPS(443) 시각화   -->
+    <!-- ===================================================================== -->
+    <section id="view-ports" class="hidden space-y-6">
+
+      <!-- 1. Well-Known 포트 핵심 개념 & 전체 포트 범위(0~65535) 스펙트럼 -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-5">
+        <div class="max-w-3xl space-y-2">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300">
+            <span>L4 Transport Layer</span>
+            <span>·</span>
+            <span>IANA Port Number System (0 ~ 65,535)</span>
+          </div>
+          <h2 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+            Well-Known 포트란 무엇이며, 왜 HTTP는 80번·HTTPS는 443번일까요?
+          </h2>
+          <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            <strong>IP 주소</strong>가 서버 컴퓨터를 찾아가는 '건물 주소'라면, <strong>포트 번호(Port Number)</strong>는 그 건물 안에서 어떤 프로그램(웹 서버, 메일 서버, DB 등)에게 데이터를 전달할지 구분하는 <strong>'출입문(호실) 번호'</strong>입니다. 전 세계 표준 프로토콜들이 혼선 없이 통신하도록 국제인터넷주소관리기구(IANA)가 미리 약속해 둔 <strong>0번 ~ 1023번</strong> 번호대를 <strong>Well-Known 포트(잘 알려진 포트)</strong>라고 부릅니다.
+          </p>
+        </div>
+
+        <!-- 3대 포트 번호 구간 시각화 바 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="p-4 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/30 border-2 border-indigo-400/80 dark:border-indigo-700 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="px-2.5 py-0.5 rounded-lg bg-indigo-600 text-white font-mono text-xs font-bold">0 ~ 1023</span>
+              <span class="text-xs font-bold text-indigo-700 dark:text-indigo-300">핵심 표준 구간</span>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">Well-Known Ports (잘 알려진 포트)</h3>
+            <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              IANA가 주요 표준 프로토콜용으로 예약한 번호입니다. 웹 브라우저가 URL에 포트 번호를 생략해도 <code>http://</code>는 <strong>80</strong>, <code>https://</code>는 <strong>443</strong>으로 자동 접속합니다. (리눅스/유닉스에서는 관리자 권한 필요)
+            </p>
+          </div>
+
+          <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="px-2.5 py-0.5 rounded-lg bg-slate-700 text-white font-mono text-xs font-bold">1024 ~ 49151</span>
+              <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">애플리케이션 구간</span>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">Registered Ports (등록된 포트)</h3>
+            <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              특정 소프트웨어나 데이터베이스, 개발용 서버가 사용하는 포트입니다. 예: MySQL(<code>3306</code>), PostgreSQL(<code>5432</code>), 대체 HTTPS(<code>8443</code>), 웹 개발 서버(<code>3000</code>, <code>8080</code>).
+            </p>
+          </div>
+
+          <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="px-2.5 py-0.5 rounded-lg bg-emerald-600 text-white font-mono text-xs font-bold">49152 ~ 65535</span>
+              <span class="text-xs font-semibold text-emerald-600 dark:text-emerald-400">클라이언트 발신용</span>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">Dynamic / Ephemeral Ports (동적 포트)</h3>
+            <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              내 PC의 브라우저가 서버(443번)에 요청을 보낼 때, 응답을 되돌려받기 위해 운영체제(OS)가 <strong>임시로 자동 할당하는 발신자 포트</strong>입니다. 통신이 끝나면 반납됩니다.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 인터랙티브 URL -> 소켓(IP:Port) & 방화벽 매핑 시뮬레이터 -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 class="text-base sm:text-lg font-bold text-slate-900 dark:text-white">🔌 브라우저 URL별 자동 포트 매핑 & 서버 소켓 연결 체험</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">아래 URL 버튼을 선택하면 브라우저가 생략된 Well-Known 포트를 어떻게 채워 넣고 서버의 어떤 데몬(프로세스)과 연결하는지 확인할 수 있습니다.</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="selectPortDemo('http')" id="port-demo-btn-http" class="px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all">
+              http://bank.example.com
+            </button>
+            <button onclick="selectPortDemo('https')" id="port-demo-btn-https" class="px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all">
+              https://bank.example.com
+            </button>
+            <button onclick="selectPortDemo('custom')" id="port-demo-btn-custom" class="px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all">
+              https://bank.example.com:8443
+            </button>
+          </div>
+        </div>
+
+        <!-- 소켓 연결 다이어그램 출력 영역 -->
+        <div id="port-demo-stage" class="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+          <!-- JS 동적 렌더링 -->
+        </div>
+      </div>
+
+      <!-- 3. 주요 Well-Known 포트 보안 대조표 (평문 프로토콜 vs 암호화 프로토콜 쌍) -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div class="p-5 sm:p-6 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 class="text-base sm:text-lg font-bold text-slate-900 dark:text-white">📋 주요 Well-Known 포트 목록 & 평문 vs 보안 포트 비교</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">보안이 없는 기존 프로토콜과 암호화가 적용된 최신 프로토콜이 서로 다른 Well-Known 포트를 사용하는 이유를 확인해 보세요.</p>
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            <button onclick="filterPortsTable('all')" id="port-filter-all" class="port-filter-btn px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white">전체 보기</button>
+            <button onclick="filterPortsTable('web')" id="port-filter-web" class="port-filter-btn px-3 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">웹 (HTTP/HTTPS)</button>
+            <button onclick="filterPortsTable('remote')" id="port-filter-remote" class="port-filter-btn px-3 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">원격/파일전송</button>
+            <button onclick="filterPortsTable('infra')" id="port-filter-infra" class="port-filter-btn px-3 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">DNS/메일</button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <th class="py-3 px-4 font-bold">포트 번호</th>
+                <th class="py-3 px-4 font-bold">프로토콜</th>
+                <th class="py-3 px-4 font-bold">전송 계층</th>
+                <th class="py-3 px-4 font-bold">보안 방식</th>
+                <th class="py-3 px-4 font-bold">역할 및 특징</th>
+              </tr>
+            </thead>
+            <tbody id="ports-table-body" class="divide-y divide-slate-200 dark:divide-slate-800 text-xs sm:text-sm">
+              <!-- JS 동적 렌더링 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 6: TCP vs UDP 전송 계층 비교 & 패킷 유실 실시간 시뮬레이터          -->
+    <!-- ===================================================================== -->
+    <section id="view-tcpudp" class="hidden space-y-6">
+
+      <!-- 1. 핵심 개념 및 HTTP/HTTPS와의 연관성 배너 -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div class="max-w-3xl space-y-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300">
+              <span>L4 Transport Layer</span>
+              <span>·</span>
+              <span>신뢰성(TCP) vs 초저지연(UDP)</span>
+            </div>
+            <h2 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              전송 계층(L4)의 두 주역: TCP와 UDP는 어떻게 다를까요?
+            </h2>
+            <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              응용 계층(HTTP/HTTPS)의 데이터를 목적지 포트까지 배달하는 방식에는 두 가지 표준이 있습니다. <strong>TCP</strong>는 전화 통화처럼 연결을 먼저 맺고 데이터 누락과 순서를 100% 보장하며, <strong>UDP</strong>는 엽서 보내기처럼 연결 절차 없이 데이터를 즉시 쏘아 보내 속도와 실시간성을 극대화합니다.
+            </p>
+          </div>
+
+          <!-- HTTP 버전별 TCP / UDP 매핑 미니 카드 -->
+          <div class="shrink-0 bg-slate-50 dark:bg-slate-800/80 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs space-y-2 min-w-[270px]">
+            <div class="font-bold text-slate-800 dark:text-slate-200">🌐 웹 프로토콜(HTTP)에서의 활용</div>
+            <div class="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 flex items-center justify-between">
+              <span class="font-semibold text-indigo-700 dark:text-indigo-300">HTTP/1.1 & HTTP/2</span>
+              <span class="font-mono font-bold px-2 py-0.5 rounded bg-indigo-600 text-white text-[11px]">TCP 기반</span>
+            </div>
+            <div class="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-between">
+              <span class="font-semibold text-amber-700 dark:text-amber-300">HTTP/3 (QUIC)</span>
+              <span class="font-mono font-bold px-2 py-0.5 rounded bg-amber-600 text-white text-[11px]">UDP + TLS 1.3</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 인터랙티브 패킷 전송 & 패킷 유실 시뮬레이터 -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-5">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <h3 class="text-base sm:text-lg font-bold text-slate-900 dark:text-white">📡 실시간 패킷 전송 & 유실(Packet Loss) 대응 시뮬레이터</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">4개의 데이터 조각(<code>#1 ~ #4</code>)을 보낼 때, 연결 절차와 중간 패킷 유실 시 TCP와 UDP가 어떻게 다르게 반응하는지 비교해 보세요.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="runTcpUdpSim(false)" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-semibold shadow-sm transition-colors">
+              ▶ 정상 전송 실행
+            </button>
+            <button onclick="runTcpUdpSim(true)" class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs sm:text-sm font-semibold shadow-sm transition-colors">
+              ⚠️ 패킷 #2 유실 시뮬레이션
+            </button>
+          </div>
+        </div>
+
+        <!-- 좌우 비교 시뮬레이션 무대 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          
+          <!-- TCP 시뮬레이션 패널 -->
+          <div class="rounded-2xl border-2 border-indigo-200 dark:border-indigo-900/60 bg-slate-50/60 dark:bg-slate-800/40 p-4 sm:p-5 flex flex-col justify-between space-y-4">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <div>
+                  <span class="px-2.5 py-0.5 rounded-md bg-indigo-600 text-white font-mono text-xs font-bold">TCP</span>
+                  <span class="ml-1.5 font-bold text-sm sm:text-base text-slate-900 dark:text-white">Transmission Control Protocol</span>
+                </div>
+                <span id="tcp-sim-badge" class="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">대기 중</span>
+              </div>
+
+              <!-- 패킷 상태 트랙 -->
+              <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-2">
+                <div class="flex items-center justify-between text-[11px] text-slate-500">
+                  <span>1단계: 3-Way Handshake (SYN → SYN-ACK → ACK)</span>
+                  <span id="tcp-hs-status" class="font-mono font-bold text-slate-400">미연결</span>
+                </div>
+                <div class="grid grid-cols-4 gap-2 pt-1" id="tcp-packets-grid">
+                  <!-- JS 동적 렌더링 -->
+                </div>
+              </div>
+
+              <!-- 로그 출력창 -->
+              <div id="tcp-sim-log" class="p-3 rounded-xl bg-slate-900 text-indigo-200 font-mono text-xs h-32 overflow-y-auto space-y-1 border border-slate-800">
+                <div class="text-slate-400">// 상단 버튼을 눌러 TCP 전송 과정을 확인하세요.</div>
+              </div>
+            </div>
+
+            <!-- 수신 측 최종 결과 -->
+            <div class="p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-between text-xs">
+              <span class="font-bold text-indigo-900 dark:text-indigo-200">수신 측 최종 데이터 조합:</span>
+              <span id="tcp-final-result" class="font-mono font-bold text-indigo-600 dark:text-indigo-300">-</span>
+            </div>
+          </div>
+
+          <!-- UDP 시뮬레이션 패널 -->
+          <div class="rounded-2xl border-2 border-amber-200 dark:border-amber-900/60 bg-slate-50/60 dark:bg-slate-800/40 p-4 sm:p-5 flex flex-col justify-between space-y-4">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <div>
+                  <span class="px-2.5 py-0.5 rounded-md bg-amber-600 text-white font-mono text-xs font-bold">UDP</span>
+                  <span class="ml-1.5 font-bold text-sm sm:text-base text-slate-900 dark:text-white">User Datagram Protocol</span>
+                </div>
+                <span id="udp-sim-badge" class="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300">대기 중</span>
+              </div>
+
+              <!-- 패킷 상태 트랙 -->
+              <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-2">
+                <div class="flex items-center justify-between text-[11px] text-slate-500">
+                  <span>1단계: 핸드셰이크 없음 (0-RTT 즉시 발송)</span>
+                  <span id="udp-hs-status" class="font-mono font-bold text-emerald-500">비연결형 (즉시 전송)</span>
+                </div>
+                <div class="grid grid-cols-4 gap-2 pt-1" id="udp-packets-grid">
+                  <!-- JS 동적 렌더링 -->
+                </div>
+              </div>
+
+              <!-- 로그 출력창 -->
+              <div id="udp-sim-log" class="p-3 rounded-xl bg-slate-900 text-amber-200 font-mono text-xs h-32 overflow-y-auto space-y-1 border border-slate-800">
+                <div class="text-slate-400">// 상단 버튼을 눌러 UDP 전송 과정을 확인하세요.</div>
+              </div>
+            </div>
+
+            <!-- 수신 측 최종 결과 -->
+            <div class="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-center justify-between text-xs">
+              <span class="font-bold text-amber-900 dark:text-amber-200">수신 측 최종 데이터 조합:</span>
+              <span id="udp-final-result" class="font-mono font-bold text-amber-600 dark:text-amber-300">-</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 3. 헤더 구조 및 오버헤드 시각화 (TCP 20 Bytes vs UDP 8 Bytes) -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">📦 TCP 세그먼트 헤더 (기본 20 Bytes ~ 최대 60 Bytes)</h3>
+            <span class="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">정교한 제어 정보 포함</span>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400">순서 보장, 수신 확인(ACK), 흐름 제어, 혼잡 제어를 위해 많은 관리 필드가 붙습니다.</p>
+          <div class="grid grid-cols-2 gap-1.5 text-center font-mono text-[11px]">
+            <div class="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-800">출발지 포트 (16 bit)</div>
+            <div class="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-800">목적지 포트 (16 bit)</div>
+            <div class="col-span-2 p-2 rounded-lg bg-indigo-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700">순서 번호 (Sequence Number - 32 bit)</div>
+            <div class="col-span-2 p-2 rounded-lg bg-indigo-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700">확인 응답 번호 (Acknowledgment Number - 32 bit)</div>
+            <div class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700">제어 플래그 (SYN, ACK, FIN)</div>
+            <div class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700">윈도우 크기 (흐름 제어)</div>
+          </div>
+        </div>
+
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">⚡ UDP 데이터그램 헤더 (고정 8 Bytes)</h3>
+            <span class="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">초경량 · 최소 오버헤드</span>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400">순서 번호나 ACK 필드가 전혀 없어 헤더 크기가 TCP의 절반 이하이며 처리 속도가 매우 빠릅니다.</p>
+          <div class="grid grid-cols-2 gap-1.5 text-center font-mono text-[11px]">
+            <div class="p-2.5 rounded-lg bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-800">출발지 포트 (16 bit)</div>
+            <div class="p-2.5 rounded-lg bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-800">목적지 포트 (16 bit)</div>
+            <div class="p-2.5 rounded-lg bg-amber-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700">전체 길이 (Length - 16 bit)</div>
+            <div class="p-2.5 rounded-lg bg-amber-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700">오류 검출 체크섬 (16 bit)</div>
+            <div class="col-span-2 p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
+              실제 데이터 (Payload) 바로 시작 → 지연 시간 최소화!
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. TCP vs UDP 핵심 비교표 -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div class="p-5 border-b border-slate-200 dark:border-slate-800">
+          <h3 class="text-base sm:text-lg font-bold text-slate-900 dark:text-white">📊 TCP vs UDP 한눈에 구분하기</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <th class="py-3.5 px-5 font-bold">구분 기준</th>
+                <th class="py-3.5 px-5 font-bold text-indigo-600 dark:text-indigo-400">TCP (신뢰성 중심)</th>
+                <th class="py-3.5 px-5 font-bold text-amber-600 dark:text-amber-400">UDP (속도 · 실시간성 중심)</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-200 dark:divide-slate-800 text-xs sm:text-sm">
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                <td class="py-3.5 px-5 font-semibold text-slate-900 dark:text-white">연결 방식</td>
+                <td class="py-3.5 px-5"><strong>연결 지향형</strong> (3-Way Handshake로 연결 후 통신)</td>
+                <td class="py-3.5 px-5"><strong>비연결형</strong> (연결 절차 없이 목적지로 바로 패킷 전송)</td>
+              </tr>
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                <td class="py-3.5 px-5 font-semibold text-slate-900 dark:text-white">데이터 신뢰성</td>
+                <td class="py-3.5 px-5">✅ <strong>높음</strong> (ACK 확인 및 유실 시 자동 재전송)</td>
+                <td class="py-3.5 px-5">⚠️ <strong>낮음</strong> (패킷이 중간에 유실되어도 재전송하지 않음)</td>
+              </tr>
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                <td class="py-3.5 px-5 font-semibold text-slate-900 dark:text-white">전송 순서 보장</td>
+                <td class="py-3.5 px-5">Sequence 번호를 이용해 보낸 순서대로 재조립 보장</td>
+                <td class="py-3.5 px-5">경로에 따라 도착 순서가 바뀔 수 있음</td>
+              </tr>
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                <td class="py-3.5 px-5 font-semibold text-slate-900 dark:text-white">흐름 / 혼잡 제어</td>
+                <td class="py-3.5 px-5">수신자 버퍼와 네트워크 혼잡도에 맞춰 전송 속도 자동 조절</td>
+                <td class="py-3.5 px-5">제어 기능 없음 (일정한 속도로 계속 전송)</td>
+              </tr>
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                <td class="py-3.5 px-5 font-semibold text-slate-900 dark:text-white">전송 속도 & 헤더</td>
+                <td class="py-3.5 px-5">상대적으로 느림 (헤더 20~60 Bytes)</td>
+                <td class="py-3.5 px-5">매우 빠름 (헤더 8 Bytes 고정)</td>
+              </tr>
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                <td class="py-3.5 px-5 font-semibold text-slate-900 dark:text-white">주요 활용 분야</td>
+                <td class="py-3.5 px-5"><strong>HTTP/1.1·2, HTTPS</strong>, 파일 전송(SFTP), 이메일(SMTP), 금융 거래</td>
+                <td class="py-3.5 px-5"><strong>실시간 스트리밍, 온라인 FPS 게임, 음성/영상 통화(WebRTC), DNS, HTTP/3(QUIC)</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 7: 웹 서버(Nginx, WebtoB, IIS) vs WAS 서버 아키텍처 시각화          -->
+    <!-- ===================================================================== -->
+    <section id="view-server" class="hidden space-y-6">
+
+      <!-- 1. 핵심 아키텍처 개념 배너 (Web Server vs WAS & HTTPS SSL Termination) -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div class="max-w-3xl space-y-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300">
+              <span>3-Tier Web Architecture</span>
+              <span>·</span>
+              <span>Web Server (DMZ) + WAS (Internal) + DB</span>
+            </div>
+            <h2 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              왜 실무에서는 웹 서버(Nginx, WebtoB, IIS)와 WAS를 분리할까요?
+            </h2>
+            <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              <strong>웹 서버(Web Server)</strong>는 HTML, CSS, 이미지 같은 <strong>정적 리소스</strong>를 빠르게 응답하고 앞단에서 <strong>HTTPS(TLS) 암호화 해제(SSL Termination)</strong> 및 부하 분산을 담당합니다. 반면 <strong>WAS(Web Application Server)</strong>는 로그인·결제·DB 조회 같은 <strong>동적 비즈니스 로직</strong> 처리에 집중하여 서버 자원과 보안을 최적화합니다.
+            </p>
+          </div>
+
+          <!-- HTTPS SSL Termination 핵심 요약 박스 -->
+          <div class="shrink-0 bg-emerald-50/80 dark:bg-emerald-950/30 p-3.5 rounded-2xl border border-emerald-200 dark:border-emerald-800/60 text-xs space-y-1.5 max-w-sm">
+            <div class="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+              <span>🔒 SSL Termination (SSL 오프로딩)</span>
+            </div>
+            <p class="text-emerald-900/80 dark:text-emerald-200/90 leading-relaxed">
+              외부 구간은 <strong>웹 서버(:443)</strong>가 HTTPS 인증서와 암·복호화를 전담하고, 방화벽 안쪽(내부망)의 <strong>WAS</strong>와는 가벼운 내부 HTTP/전용 프로토콜로 통신해 WAS의 CPU 부하를 줄입니다.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 인터랙티브 요청 분기(Routing) & 서버 계층 흐름 시뮬레이터 -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-5">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div>
+            <h3 class="text-base sm:text-lg font-bold text-slate-900 dark:text-white">🔀 요청 유형별 서버 계층 처리 흐름 시뮬레이터</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">요청 종류와 웹 서버 소프트웨어 스택을 선택해 패킷이 DMZ 웹 서버와 내부망 WAS를 어떻게 거치는지 확인해 보세요.</p>
+          </div>
+
+          <!-- 요청 유형 선택 버튼 -->
+          <div class="flex flex-wrap gap-2">
+            <button onclick="selectServerFlow('static')" id="srv-flow-btn-static" class="px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all">
+              🖼️ 정적 파일 (GET /logo.png)
+            </button>
+            <button onclick="selectServerFlow('dynamic')" id="srv-flow-btn-dynamic" class="px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all">
+              💳 동적 API (POST /api/pay)
+            </button>
+            <button onclick="selectServerFlow('lb')" id="srv-flow-btn-lb" class="px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all">
+              ⚖️ 무중단 부하분산 (Load Balancing)
+            </button>
+          </div>
+        </div>
+
+        <!-- 아키텍처 스택 프리셋 선택 바 (Nginx / WebtoB / IIS) -->
+        <div class="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+          <span class="text-xs font-bold text-slate-500 dark:text-slate-400 mr-1">실무 서버 조합 선택:</span>
+          <button onclick="selectServerStack('nginx')" id="srv-stack-btn-nginx" class="px-3 py-1 rounded-lg text-xs font-bold transition-all">
+            🟩 Nginx + Tomcat (오픈소스 표준)
+          </button>
+          <button onclick="selectServerStack('webtob')" id="srv-stack-btn-webtob" class="px-3 py-1 rounded-lg text-xs font-bold transition-all">
+            🟦 WebtoB + JEUS (국내 금융·공공 표준)
+          </button>
+          <button onclick="selectServerStack('iis')" id="srv-stack-btn-iis" class="px-3 py-1 rounded-lg text-xs font-bold transition-all">
+            🟪 IIS + Kestrel/.NET (Windows 엔터프라이즈)
+          </button>
+        </div>
+
+        <!-- 4단계 파이프라인 시각화 무대 -->
+        <div id="server-pipeline-stage" class="space-y-4">
+          <!-- JS 동적 렌더링 -->
+        </div>
+      </div>
+
+      <!-- 3. 대표 웹 서버 3대장(Nginx, WebtoB, IIS) & WAS 상세 비교 카드 -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        
+        <!-- Nginx 카드 -->
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-4">
+          <div class="space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 font-mono text-xs font-bold">Web Server / Proxy</span>
+              <span class="text-xs font-semibold text-slate-400">Open Source</span>
+            </div>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white">Nginx (엔진엑스)</h3>
+            <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              <strong>비동기 이벤트 기반(Event-Driven)</strong> 구조를 채택해 적은 메모리로도 수만 개의 동시 접속을 처리하는 현대 웹 아키텍처의 표준 웹 서버입니다.
+            </p>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs space-y-1">
+            <div class="font-bold text-emerald-600 dark:text-emerald-400">✨ 핵심 강점 & 주 조합</div>
+            <p class="text-slate-500 dark:text-slate-400">• 리버스 프록시, L7 로드밸런싱, HTTPS SSL Termination 최적화<br/>• 주로 <strong>Tomcat(Spring Boot), Node.js, Gunicorn</strong> 앞단에 배치</p>
+          </div>
+        </div>
+
+        <!-- WebtoB 카드 -->
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-4">
+          <div class="space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="px-2.5 py-1 rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-mono text-xs font-bold">Enterprise Web Server</span>
+              <span class="text-xs font-semibold text-slate-400">TmaxSoft (국산)</span>
+            </div>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white">WebtoB (웹투비)</h3>
+            <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              티맥스소프트가 개발한 상용 웹 서버로, <strong>국내 은행·증권·공공기관</strong>의 미션 크리티컬 시스템에서 압도적인 점유율을 보유하고 있습니다.
+            </p>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs space-y-1">
+            <div class="font-bold text-indigo-600 dark:text-indigo-400">✨ 핵심 강점 & 주 조합</div>
+            <p class="text-slate-500 dark:text-slate-400">• 국산 WAS인 <strong>JEUS(제우스)</strong>와 전용 소켓 프로토콜(WBAPI)로 초고속 연동<br/>• 웹 서버와 WAS 간 장애 격리 및 대규모 트랜잭션 안정성 우수</p>
+          </div>
+        </div>
+
+        <!-- IIS 카드 -->
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-4">
+          <div class="space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="px-2.5 py-1 rounded-lg bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 font-mono text-xs font-bold">Windows Web Server</span>
+              <span class="text-xs font-semibold text-slate-400">Microsoft</span>
+            </div>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white">IIS (Internet Information Services)</h3>
+            <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              Microsoft <strong>Windows Server</strong>에 기본 탑재되는 전용 웹 서버로, GUI 관리 콘솔과 Windows 보안·인증 체계가 완벽하게 통합되어 있습니다.
+            </p>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs space-y-1">
+            <div class="font-bold text-purple-600 dark:text-purple-400">✨ 핵심 강점 & 주 조합</div>
+            <p class="text-slate-500 dark:text-slate-400">• <strong>ASP.NET / .NET Core(Kestrel)</strong> 애플리케이션 호스팅 및 리버스 프록시<br/>• Active Directory(AD) 연동 사내 인트라넷 및 인증서 관리 용이</p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 4. Web Server vs WAS 핵심 비교표 -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div class="p-5 border-b border-slate-200 dark:border-slate-800">
+          <h3 class="text-base sm:text-lg font-bold text-slate-900 dark:text-white">🏛️ 웹 서버(Web Server) vs WAS(Web Application Server) 역할 비교</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <th class="py-3.5 px-5 font-bold">비교 항목</th>
+                <th class="py-3.5 px-5 font-bold text-emerald-600 dark:text-emerald-400">웹 서버 (Web Server)</th>
+                <th class="py-3.5 px-5 font-bold text-indigo-600 dark:text-indigo-400">WAS (Web Application Server)</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-200 dark:divide-slate-800 text-xs sm:text-sm">
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                <td class="py-3.5 px-5 font-semibold text-slate-900 dark:text-white">주요 처리 대상</td>
+                <td class="py-3.5 px-5"><strong>정적 콘텐츠</strong> (HTML, CSS, JS, 이미지, 동영상 등 이미 완성된 파일)</td>
+                <td class="py-3.5 px-5"><strong>동적 콘텐츠</strong> (사용자별 맞춤 데이터, 결제·로그인 로직, DB 연산 결과)</td>
+              </tr>
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                <td class="py-3.5 px-5 font-semibold text-slate-900 dark:text-white">대표 소프트웨어</td>
+                <td class="py-3.5 px-5 font-mono font-semibold">Nginx, WebtoB, IIS, Apache HTTP Server</td>
+                <td class="py-3.5 px-5 font-mono font-semibold">Tomcat, JEUS, JBoss(WildFly), WebLogic, Kestrel</td>
+              </tr>
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                <td class="py-3.5 px-5 font-semibold text-slate-900 dark:text-white">네트워크 배치 위치</td>
+                <td class="py-3.5 px-5">외부와 접하는 <strong>DMZ(완충 지대)</strong>에 배치 (80 / 443 포트 오픈)</td>
+                <td class="py-3.5 px-5">방화벽 안쪽 <strong>내부 보안망(Private Zone)</strong>에 배치 (DB 보호)</td>
+              </tr>
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                <td class="py-3.5 px-5 font-semibold text-slate-900 dark:text-white">HTTPS 보안 역할</td>
+                <td class="py-3.5 px-5"><strong>SSL/TLS 인증서 탑재 및 암·복호화 전담 (SSL Termination)</strong></td>
+                <td class="py-3.5 px-5">복호화된 요청을 전달받아 세션·권한 검증 및 트랜잭션 수행</td>
+              </tr>
+              <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                <td class="py-3.5 px-5 font-semibold text-slate-900 dark:text-white">분리 운영의 이점</td>
+                <td class="py-3.5 px-5">정적 파일 캐싱·압축으로 빠른 응답 및 리버스 프록시 라우팅</td>
+                <td class="py-3.5 px-5">장애 발생 시 웹 서버에서 점검 페이지 노출 가능, 무중단 배포(Scale-out) 용이</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- 푸터 -->
+  <footer class="border-t border-slate-200 dark:border-slate-800 py-4 px-4 text-center text-xs text-slate-500 dark:text-slate-400">
+    HTTP vs HTTPS Request-Response Lifecycle Visualizer · 웹 보안 및 네트워크 프로토콜 학습 도구
+  </footer>
+
+  <!-- ===================================================================== -->
+  <!-- JAVASCRIPT: 시뮬레이션 데이터, 애니메이션 엔진, 상태 관리               -->
+  <!-- ===================================================================== -->
+  <script>
+    // 1. 시나리오별 페이로드 데이터 정의
+    const SCENARIOS = {
+      login: {
+        method: 'POST /api/v1/login HTTP/1.1',
+        host: 'Host: secure-bank.example.com',
+        reqBody: '{"userId": "gildong_hong", "password": "MyPassword123!"}',
+        resStatus: 'HTTP/1.1 200 OK',
+        resBody: '{"status": "success", "sessionToken": "eyJhbGciOiJIUzI1Ni..."}'
+      },
+      payment: {
+        method: 'POST /api/v1/checkout HTTP/1.1',
+        host: 'Host: shop-pay.example.com',
+        reqBody: '{"cardNumber": "4532-8812-9901-1234", "cvc": "789", "amount": 150000}',
+        resStatus: 'HTTP/1.1 200 OK',
+        resBody: '{"approved": true, "receiptId": "TX-20261116-9981"}'
+      },
+      api: {
+        method: 'GET /api/v1/users/profile HTTP/1.1',
+        host: 'Host: cloud-docs.example.com\nAuthorization: Bearer sk_live_98a7f6d5e4c3b2a1',
+        reqBody: '(Body 없음 - 헤더에 민감한 인증 토큰 포함)',
+        resStatus: 'HTTP/1.1 200 OK',
+        resBody: '{"name": "김민수", "ssn_last4": "1234", "email": "minsu@example.com"}'
+      }
+    };
+
+    // 2. 8단계 통신 시뮬레이션 데이터 생성 함수 (선택된 시나리오 반영)
+    function getSimulationSteps(scenarioKey) {
+      const sc = SCENARIOS[scenarioKey];
+      return [
+        {
+          shortTitle: '1. TCP 연결',
+          http: {
+            phase: 'TCP 3-Way Handshake',
+            dir: 'right',
+            packetLabel: 'TCP SYN → ACK',
+            summary: '클라이언트와 서버(80번 포트)가 데이터를 주고받기 위해 기본 전송 계층(TCP) 연결을 수립합니다.',
+            wire: `[TCP Layer] Client -> Server:80\nFlags: SYN -> SYN-ACK -> ACK\nStatus: TCP Connection Established`,
+            snifferVerdict: '연결 감지',
+            snifferText: '192.168.0.10 -> Server:80 TCP 연결 시작됨 (아직 데이터 없음)',
+            encrypted: false
+          },
+          https: {
+            phase: 'TCP 3-Way Handshake',
+            dir: 'right',
+            packetLabel: 'TCP SYN → ACK',
+            summary: 'HTTPS 역시 신뢰성 있는 전송을 위해 먼저 서버(443번 포트)와 TCP 3-Way Handshake를 수행합니다.',
+            wire: `[TCP Layer] Client -> Server:443\nFlags: SYN -> SYN-ACK -> ACK\nStatus: TCP Connection Established`,
+            snifferVerdict: '연결 감지',
+            snifferText: '192.168.0.10 -> Server:443 TCP 연결 시작됨',
+            tunnelActive: false,
+            tunnelText: '1단계: TCP 연결 완료 (TLS 시작 전)',
+            hasSessionKey: false
+          },
+          tipTitle: '공통 출발점: TCP 3-Way Handshake',
+          tipDesc: 'HTTP와 HTTPS 모두 애플리케이션 데이터를 보내기 전, 신뢰성 있는 패킷 전달을 보장하기 위해 TCP 연결(SYN → SYN-ACK → ACK)을 먼저 맺습니다.'
+        },
+        {
+          shortTitle: '2. Client Hello',
+          http: {
+            phase: '대기 (생략됨)',
+            dir: 'none',
+            packetLabel: '단계 없음',
+            summary: 'HTTP는 암호화 협상 과정이 없으므로 이 단계를 거치지 않고 즉시 요청을 보낼 준비를 합니다.',
+            wire: `(HTTP는 TLS 핸드셰이크 과정이 존재하지 않습니다)`,
+            snifferVerdict: '감청 대기',
+            snifferText: '다음 단계에서 평문 HTTP 요청이 들어오기를 기다리는 중...',
+            encrypted: false
+          },
+          https: {
+            phase: 'TLS Handshake (1/4)',
+            dir: 'right',
+            packetLabel: 'Client Hello',
+            summary: '클라이언트가 서버에 지원 가능한 TLS 버전, 암호화 방식(Cipher Suite) 목록, 클라이언트 난수(Random)를 보냅니다.',
+            wire: `TLSv1.3 Record Layer: Handshake Protocol: Client Hello\nVersion: TLS 1.3 (0x0304)\nRandom: 4f8a92c1e7b03d... (32 bytes)\nCipher Suites: TLS_AES_256_GCM_SHA384, ...`,
+            snifferVerdict: '메타데이터만 보임',
+            snifferText: 'TLS 인사 패킷 감지 (SNI 도메인 정보 외에 비밀키 정보 없음)',
+            tunnelActive: false,
+            tunnelText: 'TLS 협상 중: 암호화 방식 제안',
+            hasSessionKey: false
+          },
+          tipTitle: 'HTTPS만의 추가 보안 절차 시작: Client Hello',
+          tipDesc: '클라이언트가 서버에게 "나는 이런 암호화 알고리즘들을 사용할 수 있어!"라고 목록을 제시하며 무작위 난수(Client Random)를 전달합니다.'
+        },
+        {
+          shortTitle: '3. 인증서 전달',
+          http: {
+            phase: '대기 (생략됨)',
+            dir: 'none',
+            packetLabel: '단계 없음',
+            summary: 'HTTP 서버는 자신이 진짜 서버임을 증명하는 인증서를 제공하지 않습니다.',
+            wire: `(HTTP 서버는 디지털 인증서를 보유/전송하지 않습니다)`,
+            snifferVerdict: '위장 공격 가능',
+            snifferText: '공격자가 가짜 서버로 속여도 클라이언트가 구별할 방법이 없습니다.',
+            encrypted: false
+          },
+          https: {
+            phase: 'TLS Handshake (2/4)',
+            dir: 'left',
+            packetLabel: 'Server Hello + 인증서',
+            summary: '서버가 암호화 방식을 선택하고, 서버 난수와 함께 <strong>CA가 발급한 SSL/TLS 인증서(서버 공개키 포함)</strong>를 보냅니다.',
+            wire: `TLS Handshake: Server Hello & Certificate\nSelected Cipher: TLS_AES_256_GCM_SHA384\nServer Random: 9c1b77a4d2e801...\nCertificate: CN=*.example.com (Issuer: DigiCert CA)\nServer Public Key: RSA-2048 / ECDHE P-256`,
+            snifferVerdict: '공개 정보만 노출',
+            snifferText: '서버 인증서와 공개키는 원래 공개되는 정보이므로 탈취되어도 안전함',
+            tunnelActive: false,
+            tunnelText: 'TLS 협상 중: 서버 신원 및 공개키 수신',
+            hasSessionKey: false
+          },
+          tipTitle: '서버 신원 보증: SSL/TLS 디지털 인증서',
+          tipDesc: '서버가 보낸 인증서 안에는 "서버의 공개키"와 "공인인증기관(CA)의 전자서명"이 들어있어 피싱 사이트 여부를 판별할 수 있게 해줍니다.'
+        },
+        {
+          shortTitle: '4. 키 교환/생성',
+          http: {
+            phase: '대기 (생략됨)',
+            dir: 'none',
+            packetLabel: '단계 없음',
+            summary: 'HTTP는 암호화 키를 생성하거나 교환하지 않습니다.',
+            wire: `(암호화 키 없음)`,
+            snifferVerdict: '감청 대기',
+            snifferText: '암호화 키가 없으므로 모든 트래픽이 그대로 읽힐 예정입니다.',
+            encrypted: false
+          },
+          https: {
+            phase: 'TLS Handshake (3/4)',
+            dir: 'right',
+            packetLabel: '🔑 암호화된 키 재료',
+            summary: '클라이언트가 CA 공개키로 인증서를 검증한 뒤, <strong>Pre-Master Secret</strong>을 생성해 <strong>서버의 공개키로 암호화</strong>하여 전송합니다.',
+            wire: `1. Browser verifies CA Signature -> VALID ✅\n2. Client generates Pre-Master Secret\n3. Encrypt(Pre-Master Secret, Server_Public_Key)\n   -> Ciphertext: 0x8e4f2a91b7c3... (오직 서버 개인키로만 복호화 가능)\n4. Both derive identical [Session Key]`,
+            snifferVerdict: '해독 불가능',
+            snifferText: '0x8e4f2a91b7c3... (서버의 개인키가 없으면 해커는 절대 풀 수 없음)',
+            tunnelActive: false,
+            tunnelText: '비대칭키 암호화로 대칭키(세션키) 안전 공유 완료!',
+            hasSessionKey: true
+          },
+          tipTitle: '비대칭키 암호화의 핵심 역할: 안전한 키 교환',
+          tipDesc: '클라이언트가 서버의 공개키로 잠근 비밀값은 오직 서버만 가진 개인키로만 열 수 있습니다. 이를 통해 양측은 제3자 모르게 동일한 대칭키(Session Key)를 만들어냅니다.'
+        },
+        {
+          shortTitle: '5. 암호화 준비',
+          http: {
+            phase: '평문 통신 상태',
+            dir: 'none',
+            packetLabel: '보안 없음',
+            summary: 'HTTP는 별도의 보안 채널 없이 열린 네트워크 경로 그대로 요청을 보냅니다.',
+            wire: `Channel Security: NONE (Plaintext TCP Stream)`,
+            snifferVerdict: '감청 준비 완료',
+            snifferText: '네트워크 경로상에서 모든 패킷 내용을 실시간 열람 가능',
+            encrypted: false
+          },
+          https: {
+            phase: 'TLS Handshake (4/4)',
+            dir: 'left',
+            packetLabel: 'Finished (암호화 시작)',
+            summary: '양측이 세션키로 암호화한 Finished 메시지를 교환하여 핸드셰이크 무결성을 확인하고 <strong>보안 터널</strong>을 활성화합니다.',
+            wire: `Change Cipher Spec / Handshake Finished\nEncryption: AES-256-GCM (Symmetric Session Key)\nStatus: 🔒 Secure TLS Tunnel Established!`,
+            snifferVerdict: '터널 차단됨',
+            snifferText: '이후부터 오가는 모든 패킷은 AES-256 대칭키로 암호화됨',
+            tunnelActive: true,
+            tunnelText: '🔒 TLS 암호화 보안 터널 활성화 (AES-256-GCM)',
+            hasSessionKey: true
+          },
+          tipTitle: 'TLS 핸드셰이크 완료! 이제 대칭키로 빠르게 통신합니다',
+          tipDesc: '핸드셰이크가 끝나면 무거운 비대칭키 연산을 멈추고, 방금 공유한 대칭키(Session Key)를 사용해 실제 HTTP 데이터를 초고속으로 암호화합니다.'
+        },
+        {
+          shortTitle: '6. HTTP 요청',
+          http: {
+            phase: 'HTTP Request (평문)',
+            dir: 'right',
+            packetLabel: '⚠️ 평문 Request',
+            summary: '클라이언트가 HTTP 요청(헤더 + 본문)을 <strong>아무런 암호화 없이 평문 그대로</strong> 전송합니다.',
+            wire: `${sc.method}\n${sc.host}\nContent-Type: application/json\n\n${sc.reqBody}`,
+            snifferVerdict: '🚨 민감정보 탈취!',
+            snifferText: `스니퍼 화면: ${sc.reqBody}`,
+            encrypted: false
+          },
+          https: {
+            phase: 'HTTPS Request (암호화)',
+            dir: 'right',
+            packetLabel: '🔒 암호화된 Request',
+            summary: '클라이언트가 HTTP 요청 전체를 <strong>대칭키(Session Key)로 암호화</strong>하여 TLS 레코드에 담아 전송합니다.',
+            wire: `TLSv1.3 Application Data (Encrypted Payload)\nContent-Type: Application Data (23)\nLength: 184 bytes\nEncrypted Data: 9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e...`,
+            snifferVerdict: '🛡️ 해독 불가 (안전)',
+            snifferText: '스니퍼 화면: 9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c... (내용 알 수 없음)',
+            tunnelActive: true,
+            tunnelText: '🔒 대칭키로 암호화된 요청(Request) 전송 중',
+            hasSessionKey: true
+          },
+          tipTitle: '결정적 차이: 평문 요청 vs 암호화된 요청',
+          tipDesc: '공용 Wi-Fi나 라우터 구간에서 패킷 스니핑이 발생하면 HTTP는 비밀번호와 카드번호가 그대로 노출되지만, HTTPS는 무작위 난수처럼 보이는 암호문만 보입니다.'
+        },
+        {
+          shortTitle: '7. 서버 처리',
+          http: {
+            phase: '서버 요청 처리',
+            dir: 'local',
+            packetLabel: '⚙️ 요청 파싱',
+            summary: 'HTTP 서버가 받은 평문 요청을 그대로 해석하여 비즈니스 로직(로그인/결제 등)을 처리합니다.',
+            wire: `[HTTP Server] Received Plaintext Request\n-> Parsing JSON body directly...\n-> Preparing HTTP 200 OK Response`,
+            snifferVerdict: '변조 위험 존재',
+            snifferText: '무결성 검증이 없어 중간에 해커가 요청/응답을 바꿔치기할 수 있음',
+            encrypted: false
+          },
+          https: {
+            phase: '서버 복호화 및 처리',
+            dir: 'local',
+            packetLabel: '🔓 세션키 복호화',
+            summary: 'HTTPS 서버가 보유한 <strong>동일한 대칭키(Session Key)로 복호화</strong>하고, 메시지 위변조 여부(MAC)를 검증한 뒤 처리합니다.',
+            wire: `[HTTPS Server] Decrypting with Session Key...\n-> Integrity Check (AEAD Tag): PASSED ✅\n-> Decrypted Plaintext: ${sc.reqBody}\n-> Encrypting Response with Session Key...`,
+            snifferVerdict: '변조 원천 차단',
+            snifferText: '패킷 1비트라도 수정되면 서버가 위변조를 감지하고 즉시 연결을 끊음',
+            tunnelActive: true,
+            tunnelText: '🔒 서버에서 세션키로 복호화 및 무결성 검증',
+            hasSessionKey: true
+          },
+          tipTitle: '기밀성(Confidentiality)뿐만 아니라 무결성(Integrity)까지 보장',
+          tipDesc: 'HTTPS는 내용을 숨길 뿐만 아니라, 해커가 중간에서 금액이나 계좌번호 패킷을 몰래 수정하는 중간자 변조 공격도 암호학적 인증 태그(MAC)로 즉시 탐지합니다.'
+        },
+        {
+          shortTitle: '8. HTTP 응답',
+          http: {
+            phase: 'HTTP Response (평문)',
+            dir: 'left',
+            packetLabel: '⚠️ 평문 Response',
+            summary: '서버가 응답 데이터(세션 토큰, 개인정보, HTML 등)를 <strong>평문 그대로</strong> 클라이언트에 반환합니다.',
+            wire: `${sc.resStatus}\nContent-Type: application/json\n\n${sc.resBody}`,
+            snifferVerdict: '🚨 응답 데이터 탈취!',
+            snifferText: `스니퍼 화면: ${sc.resBody}`,
+            encrypted: false
+          },
+          https: {
+            phase: 'HTTPS Response (암호화)',
+            dir: 'left',
+            packetLabel: '🔒 암호화된 Response',
+            summary: '서버가 응답을 <strong>대칭키로 암호화</strong>해 전송하고, 클라이언트가 자신의 대칭키로 복호화하여 화면에 안전하게 렌더링합니다.',
+            wire: `TLSv1.3 Application Data (Encrypted Response)\nEncrypted Data: 3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b...\n\n[Client Decrypted]: ${sc.resBody}`,
+            snifferVerdict: '🛡️ 안전하게 통신 완료',
+            snifferText: '스니퍼 화면: 3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f... (해독 불가)',
+            tunnelActive: true,
+            tunnelText: '🔒 암호화된 응답(Response) 수신 및 복호화 완료',
+            hasSessionKey: true
+          },
+          tipTitle: '안전한 왕복 통신 완료!',
+          tipDesc: '클라이언트는 복호화된 응답 데이터를 브라우저에 표시합니다. 주소창에는 안전한 연결을 의미하는 자물쇠(HTTPS) 상태가 유지됩니다.'
+        }
+      ];
+    }
+
+    // 3. 애플리케이션 전역 상태
+    let state = {
+      currentTab: 'simulator',
+      currentScenario: 'login',
+      currentStep: 0,
+      isPlaying: false,
+      snifferEnabled: true,
+      playTimer: null,
+      quizAnswers: {}
+    };
+
+    // 4. 초기화 실행
+    document.addEventListener('DOMContentLoaded', () => {
+      renderTimelinePills();
+      updateSimulatorUI();
+      renderOsiLayers();
+      renderPortsTab();
+      renderTcpUdpTab();
+      renderServerArchTab();
+      updateCryptoSandbox();
+      renderQuiz();
+      document.getElementById('quiz-score-badge').textContent = `정답: 0 / ${QUIZ_DATA.length}`;
+    });
+
+    // 5. 탭 전환 로직
+    function switchTab(tabName) {
+      state.currentTab = tabName;
+
+      // 재생 중이었다면 일시정지
+      if (state.isPlaying && tabName !== 'simulator') {
+        togglePlay();
+      }
+
+      const views = ['simulator', 'osi', 'ports', 'tcpudp', 'server', 'crypto', 'compare'];
+      views.forEach(v => {
+        const viewEl = document.getElementById(`view-${v}`);
+        const tabBtn = document.getElementById(`tab-${v}`);
+        if (!viewEl || !tabBtn) return;
+
+        if (v === tabName) {
+          viewEl.classList.remove('hidden');
+          tabBtn.classList.add('bg-white', 'dark:bg-slate-700', 'text-indigo-600', 'dark:text-indigo-300', 'shadow-sm', 'font-semibold');
+          tabBtn.classList.remove('text-slate-600', 'dark:text-slate-400', 'font-medium');
+        } else {
+          viewEl.classList.add('hidden');
+          tabBtn.classList.remove('bg-white', 'dark:bg-slate-700', 'text-indigo-600', 'dark:text-indigo-300', 'shadow-sm', 'font-semibold');
+          tabBtn.classList.add('text-slate-600', 'dark:text-slate-400', 'font-medium');
+        }
+      });
+    }
+
+    // 6. 다크/라이트 테마 토글
+    function toggleTheme() {
+      document.documentElement.classList.toggle('dark');
+    }
+
+    // 7. 타임라인 단계 버튼 렌더링
+    function renderTimelinePills() {
+      const container = document.getElementById('timeline-pills');
+      if (!container) return;
+      const steps = getSimulationSteps(state.currentScenario);
+      container.innerHTML = steps.map((step, idx) => `
+        <button onclick="goToStep(${idx})" id="pill-${idx}"
+          class="px-2 py-2 rounded-xl text-[11px] sm:text-xs font-semibold border transition-all truncate text-center">
+          ${step.shortTitle}
+        </button>
+      `).join('');
+    }
+
+    function goToStep(idx) {
+      state.currentStep = idx;
+      updateSimulatorUI();
+    }
+
+    function prevStep() {
+      if (state.currentStep > 0) {
+        state.currentStep--;
+        updateSimulatorUI();
+      }
+    }
+
+    function nextStep() {
+      const steps = getSimulationSteps(state.currentScenario);
+      if (state.currentStep < steps.length - 1) {
+        state.currentStep++;
+        updateSimulatorUI();
+      } else if (state.isPlaying) {
+        togglePlay();
+      }
+    }
+
+    function resetSimulation() {
+      if (state.isPlaying) togglePlay();
+      state.currentStep = 0;
+      updateSimulatorUI();
+    }
+
+    function changeScenario() {
+      const select = document.getElementById('scenario-select');
+      state.currentScenario = select.value;
+      updateSimulatorUI();
+    }
+
+    function toggleSniffer() {
+      state.snifferEnabled = !state.snifferEnabled;
+      const btn = document.getElementById('sniffer-toggle-btn');
+      const statusText = document.getElementById('sniffer-status-text');
+
+      if (state.snifferEnabled) {
+        statusText.textContent = 'ON';
+        btn.classList.remove('bg-slate-100', 'dark:bg-slate-800', 'text-slate-500', 'border-slate-300', 'dark:border-slate-700');
+        btn.classList.add('bg-rose-50', 'dark:bg-rose-950/40', 'text-rose-600', 'dark:text-rose-400', 'border-rose-200', 'dark:border-rose-800/60');
+      } else {
+        statusText.textContent = 'OFF';
+        btn.classList.add('bg-slate-100', 'dark:bg-slate-800', 'text-slate-500', 'border-slate-300', 'dark:border-slate-700');
+        btn.classList.remove('bg-rose-50', 'dark:bg-rose-950/40', 'text-rose-600', 'dark:text-rose-400', 'border-rose-200', 'dark:border-rose-800/60');
+      }
+      updateSimulatorUI();
+    }
+
+    function togglePlay() {
+      state.isPlaying = !state.isPlaying;
+      const iconPlay = document.getElementById('icon-play');
+      const iconPause = document.getElementById('icon-pause');
+      const btnText = document.getElementById('btn-play-text');
+
+      if (state.isPlaying) {
+        iconPlay.classList.add('hidden');
+        iconPause.classList.remove('hidden');
+        btnText.textContent = '일시 정지';
+
+        const steps = getSimulationSteps(state.currentScenario);
+        if (state.currentStep >= steps.length - 1) {
+          state.currentStep = 0;
+          updateSimulatorUI();
+        }
+
+        state.playTimer = setInterval(() => {
+          nextStep();
+        }, 2300);
+      } else {
+        iconPlay.classList.remove('hidden');
+        iconPause.classList.add('hidden');
+        btnText.textContent = '자동 재생';
+        clearInterval(state.playTimer);
+      }
+    }
+
+    // 8. 시뮬레이터 UI 전체 동기화
+    function updateSimulatorUI() {
+      const steps = getSimulationSteps(state.currentScenario);
+      const current = steps[state.currentStep];
+
+      document.getElementById('step-counter-badge').textContent = `Step ${state.currentStep + 1} / ${steps.length}`;
+      document.getElementById('btn-prev').disabled = state.currentStep === 0;
+      document.getElementById('btn-next').disabled = state.currentStep === steps.length - 1;
+
+      steps.forEach((_, idx) => {
+        const pill = document.getElementById(`pill-${idx}`);
+        if (!pill) return;
+        if (idx === state.currentStep) {
+          pill.className = 'px-2 py-2 rounded-xl text-[11px] sm:text-xs font-bold border-2 border-indigo-500 bg-indigo-600 text-white shadow-sm transition-all truncate text-center';
+        } else if (idx < state.currentStep) {
+          pill.className = 'px-2 py-2 rounded-xl text-[11px] sm:text-xs font-medium border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 transition-all truncate text-center';
+        } else {
+          pill.className = 'px-2 py-2 rounded-xl text-[11px] sm:text-xs font-medium border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 hover:border-slate-300 transition-all truncate text-center';
+        }
+      });
+
+      // --- HTTP 패널 업데이트 ---
+      document.getElementById('http-phase-badge').textContent = current.http.phase;
+      document.getElementById('http-step-summary').innerHTML = current.http.summary;
+      document.getElementById('http-wire-data').textContent = current.http.wire;
+
+      const httpPacket = document.getElementById('http-moving-packet');
+      httpPacket.textContent = current.http.packetLabel;
+      applyPacketAnimation(httpPacket, current.http.dir, 'rose');
+
+      const httpSnifferNode = document.getElementById('http-sniffer-node');
+      const httpSnifferPanel = document.getElementById('http-sniffer-panel');
+      if (state.snifferEnabled) {
+        httpSnifferNode.classList.remove('opacity-0', 'pointer-events-none');
+        httpSnifferPanel.classList.remove('hidden');
+        document.getElementById('http-sniffer-verdict').textContent = current.http.snifferVerdict;
+        document.getElementById('http-sniffer-output').textContent = current.http.snifferText;
+      } else {
+        httpSnifferNode.classList.add('opacity-0', 'pointer-events-none');
+        httpSnifferPanel.classList.add('hidden');
+      }
+
+      // --- HTTPS 패널 업데이트 ---
+      document.getElementById('https-phase-badge').textContent = current.https.phase;
+      document.getElementById('https-step-summary').innerHTML = current.https.summary;
+      document.getElementById('https-wire-data').textContent = current.https.wire;
+
+      const httpsPacket = document.getElementById('https-moving-packet');
+      httpsPacket.textContent = current.https.packetLabel;
+      applyPacketAnimation(httpsPacket, current.https.dir, 'emerald');
+
+      const tunnelBar = document.getElementById('tls-tunnel-bar');
+      const tunnelLabel = document.getElementById('tls-tunnel-label');
+      tunnelLabel.textContent = current.https.tunnelText;
+
+      if (current.https.tunnelActive) {
+        tunnelBar.className = 'w-full h-8 rounded-full border-2 border-emerald-500 bg-emerald-500/20 flex items-center justify-center transition-all duration-500 shadow-inner';
+        tunnelLabel.className = 'text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-300 tracking-wide';
+      } else {
+        tunnelBar.className = 'w-full h-7 rounded-full border border-dashed border-emerald-400/60 bg-emerald-500/5 flex items-center justify-center transition-all duration-500';
+        tunnelLabel.className = 'text-[10px] font-mono text-emerald-600/70 dark:text-emerald-400/70 tracking-wider';
+      }
+
+      const clientKeyBadge = document.getElementById('client-key-badge');
+      if (current.https.hasSessionKey) {
+        clientKeyBadge.classList.remove('hidden');
+      } else {
+        clientKeyBadge.classList.add('hidden');
+      }
+
+      const httpsSnifferNode = document.getElementById('https-sniffer-node');
+      const httpsSnifferPanel = document.getElementById('https-sniffer-panel');
+      if (state.snifferEnabled) {
+        httpsSnifferNode.classList.remove('opacity-0', 'pointer-events-none');
+        httpsSnifferPanel.classList.remove('hidden');
+        document.getElementById('https-sniffer-verdict').textContent = current.https.snifferVerdict;
+        document.getElementById('https-sniffer-output').textContent = current.https.snifferText;
+      } else {
+        httpsSnifferNode.classList.add('opacity-0', 'pointer-events-none');
+        httpsSnifferPanel.classList.add('hidden');
+      }
+
+      document.getElementById('deep-dive-title').textContent = current.tipTitle;
+      document.getElementById('deep-dive-desc').textContent = current.tipDesc;
+    }
+
+    function applyPacketAnimation(el, dir, themeColor) {
+      el.classList.remove(
+        'animate-packet-right',
+        'animate-packet-left',
+        'animate-packet-local',
+        'left-1/2',
+        '-translate-x-1/2',
+        '-translate-y-1/2',
+        'opacity-50',
+        'bg-slate-400',
+        'dark:bg-slate-700',
+        'bg-rose-600',
+        'bg-emerald-600'
+      );
+
+      if (dir === 'right') {
+        el.classList.add('animate-packet-right', themeColor === 'rose' ? 'bg-rose-600' : 'bg-emerald-600');
+      } else if (dir === 'left') {
+        el.classList.add('animate-packet-left', themeColor === 'rose' ? 'bg-rose-600' : 'bg-emerald-600');
+      } else if (dir === 'local') {
+        el.style.left = '88%';
+        el.classList.add('animate-packet-local', themeColor === 'rose' ? 'bg-rose-600' : 'bg-emerald-600');
+      } else {
+        el.style.left = '50%';
+        el.classList.add('-translate-x-1/2', '-translate-y-1/2', 'bg-slate-400', 'dark:bg-slate-700', 'opacity-50');
+      }
+    }
+
+    // 9. 암호화 원리 탭 미니 샌드박스
+    function updateCryptoSandbox() {
+      const inputEl = document.getElementById('sandbox-input');
+      const httpOut = document.getElementById('sandbox-http-out');
+      const httpsOut = document.getElementById('sandbox-https-out');
+      if (!inputEl || !httpOut || !httpsOut) return;
+
+      const raw = inputEl.value || '(빈 메시지)';
+      httpOut.textContent = `POST /submit HTTP/1.1\nHost: example.com\n\n${raw}`;
+
+      let hexStream = '';
+      for (let i = 0; i < raw.length; i++) {
+        const code = (raw.charCodeAt(i) * 73 + i * 19 + 0x5a) % 256;
+        hexStream += code.toString(16).padStart(2, '0');
+      }
+      if (hexStream.length < 48) {
+        hexStream = (hexStream + 'a94f82c1d0e7b3651984fa02c7d1e5b9').slice(0, 64);
+      }
+
+      httpsOut.textContent = `TLSv1.3 Record [Content-Type: 23 (Application Data)]\nCipher: AES_256_GCM | AuthTag: 0x4f91e2a8\nPayload: ${hexStream}`;
+    }
+
+    // 10. 개념 확인 퀴즈 데이터 및 렌더링
+    const QUIZ_DATA = [
+      {
+        q: 'Q1. HTTPS 통신에서 무거운 "비대칭키(공개키/개인키)" 암호화를 전체 데이터 전송에 쓰지 않고, 초기 핸드셰이크에만 사용하는 주된 이유는 무엇인가요?',
+        options: [
+          '비대칭키는 보안 수준이 낮아 본문 암호화에 사용할 수 없어서',
+          '비대칭키 연산은 CPU 부하가 크고 속도가 느리므로, 빠른 대칭키(세션키)를 안전하게 교환할 때만 사용하기 위해',
+          '웹 브라우저가 대칭키 암호화 알고리즘을 지원하지 않아서'
+        ],
+        answer: 1,
+        explanation: '정답입니다! 비대칭키는 키 배송 문제를 완벽히 해결하지만 연산 속도가 느립니다. 따라서 초기 키 교환에만 비대칭키를 쓰고, 실제 HTTP 데이터는 초고속 대칭키(AES 등)로 암호화하는 하이브리드 방식을 사용합니다.'
+      },
+      {
+        q: 'Q2. 중간자(해커)가 가짜 서버를 세우고 자신의 공개키를 보내는 공격(MITM)을 HTTPS는 어떻게 방어하나요?',
+        options: [
+          '공인인증기관(CA)이 발급하고 전자서명한 SSL/TLS 인증서를 브라우저 내장 CA 공개키로 검증함으로써',
+          '포트 번호를 80번 대신 443번으로 바꾸면 해커가 패킷을 잡을 수 없으므로',
+          '클라이언트가 서버의 IP 주소를 외우고 있어서'
+        ],
+        answer: 0,
+        explanation: '정답입니다! 브라우저는 신뢰할 수 있는 CA 목록과 각 CA의 공개키를 미리 내장하고 있어, 서버가 보낸 인증서가 진짜 CA에 의해 서명되었는지 즉시 검증합니다.'
+      },
+      {
+        q: 'Q3. 공용 Wi-Fi에서 HTTP 사이트와 HTTPS 사이트에 각각 로그인했을 때 네트워크 스니핑(패킷 감청) 결과의 차이는?',
+        options: [
+          '둘 다 비밀번호가 암호화되지만 HTTPS가 속도만 더 빠르다.',
+          'HTTP는 아이디·비밀번호가 평문으로 그대로 노출되고, HTTPS는 세션키로 암호화되어 해독할 수 없다.',
+          'HTTPS도 요청(Request)은 평문이고 응답(Response)만 암호화된다.'
+        ],
+        answer: 1,
+        explanation: '정답입니다! HTTPS는 TLS 핸드셰이크 완료 후 오가는 모든 요청과 응답 전체를 대칭키로 암호화하므로 제3자가 내용을 볼 수 없습니다.'
+      },
+      {
+        q: 'Q4. OSI 7계층과 Well-Known 포트 기준으로 HTTPS에 대한 설명으로 옳은 것은 무엇인가요?',
+        options: [
+          'HTTPS는 3계층(네트워크 계층)에서 IP 주소를 암호화하며 기본 포트는 80번이다.',
+          'HTTPS는 7계층(HTTP) 아래의 6·5계층(TLS/SSL)에서 데이터를 암호화하며 기본 Well-Known 포트는 443번이다.',
+          'Well-Known 포트는 49152~65535번 구간을 말하며 클라이언트 브라우저가 임시로 사용한다.'
+        ],
+        answer: 1,
+        explanation: '완벽합니다! HTTPS는 7계층 HTTP 메시지를 6계층(표현 계층)·5계층(세션 계층)의 TLS/SSL로 암호화하여 4계층 TCP 443번(Well-Known 포트)으로 전송합니다.'
+      },
+      {
+        q: 'Q5. 전송 계층(L4)의 TCP와 UDP에 대한 설명으로 가장 올바른 것은 무엇인가요?',
+        options: [
+          'UDP는 3-Way Handshake를 거쳐 패킷 유실 시 반드시 재전송한다.',
+          'TCP는 연결 지향형으로 순서와 신뢰성을 보장하고, UDP는 비연결형으로 헤더가 가볍고 실시간 스트리밍·HTTP/3(QUIC) 등에 유리하다.',
+          'HTTPS는 보안상 항상 UDP만 사용하며 TCP 위에서는 동작할 수 없다.'
+        ],
+        answer: 1,
+        explanation: '정확합니다! TCP는 신뢰성과 순서를 보장해 전통적인 HTTP/1.1·2 및 HTTPS의 기반이 되며, UDP는 연결 지연이 없고 가벼워 실시간 영상·게임 및 최신 HTTP/3(QUIC)의 기반 프로토콜로 활용됩니다.'
+      },
+      {
+        q: 'Q6. 실무 서버 아키텍처에서 Nginx, WebtoB, IIS 같은 웹 서버를 WAS(Tomcat, JEUS 등) 앞단에 배치할 때 얻는 주요 이점이 아닌 것은 무엇인가요?',
+        options: [
+          'HTML·이미지 같은 정적 파일을 WAS까지 보내지 않고 웹 서버가 즉시 처리해 부하를 줄인다.',
+          '앞단 웹 서버에서 HTTPS(TLS) 암호화를 해제(SSL Termination)해 내부 WAS의 연산 부담을 덜어준다.',
+          '웹 서버가 데이터베이스(DB)의 SQL 쿼리를 직접 실행하므로 WAS와 DB 서버가 전혀 필요 없어진다.'
+        ],
+        answer: 2,
+        explanation: '정답입니다! 웹 서버는 정적 리소스 제공, 리버스 프록시, SSL Termination, 로드밸런싱을 담당하며, 실제 비즈니스 로직과 DB 트랜잭션 처리는 내부망의 WAS가 수행합니다.'
+      },
+      {
+        q: 'Q7. 통신 시뮬레이터의 HTTPS 흐름(RSA 키 교환 방식)에서 TLS 핸드셰이크 순서로 옳은 것은?',
+        options: [
+          'Client Hello → Server Hello와 인증서 → 서버 공개키로 암호화한 Pre-Master Secret 전송 → Finished 교환',
+          'Server Hello와 인증서 → Client Hello → Finished 교환 → Pre-Master Secret 전송',
+          'Pre-Master Secret 전송 → Client Hello → Server Hello와 인증서 → Finished 교환'
+        ],
+        answer: 0,
+        explanation: '클라이언트가 지원하는 TLS 버전, Cipher Suite, 난수를 먼저 보내고(Client Hello), 서버가 방식을 골라 난수, 인증서와 함께 답합니다. 클라이언트는 인증서를 검증한 뒤 Pre-Master Secret을 서버 공개키로 암호화해 보내고, 양측이 세션키로 암호화한 Finished를 주고받으면 보안 터널이 열립니다. TLS 1.3은 키 교환 방식이 달라 핸드셰이크 왕복이 1번으로 줄어듭니다.'
+      },
+      {
+        q: 'Q8. Client Hello 메시지에 담겨 서버로 가는 정보가 아닌 것은?',
+        options: [
+          '클라이언트가 지원하는 TLS 버전',
+          '지원하는 암호화 방식(Cipher Suite) 목록과 클라이언트 난수',
+          'CA가 서명한 서버의 SSL/TLS 인증서'
+        ],
+        answer: 2,
+        explanation: '인증서는 서버가 Server Hello 단계에서 보내는 정보입니다. Client Hello는 클라이언트가 쓸 수 있는 TLS 버전, Cipher Suite 목록, 클라이언트 난수를 알리는 첫 메시지입니다.'
+      },
+      {
+        q: 'Q9. TLS 핸드셰이크 마지막에 양측이 세션키로 암호화한 Finished 메시지를 주고받는 목적은?',
+        options: [
+          '서버의 IP 주소를 클라이언트에게 알려 주려고',
+          '핸드셰이크 메시지가 중간에 바뀌지 않았는지, 양측이 같은 세션키를 갖게 됐는지 확인하려고',
+          'TCP 연결을 끝내려고'
+        ],
+        answer: 1,
+        explanation: 'Finished에는 지금까지 오간 핸드셰이크 메시지 전체의 해시로 만든 검증 값이 들어 있습니다. 상대가 이 값을 세션키로 확인하면, 중간자가 Cipher Suite 목록 같은 내용을 몰래 바꾸지 않았고 양측 세션키가 같다는 것이 확인됩니다.'
+      },
+      {
+        q: 'Q10. 시뮬레이터의 RSA 키 교환 방식에서 클라이언트가 서버 공개키로 암호화해 보낸 Pre-Master Secret을 풀 수 있는 것은?',
+        options: [
+          '같은 공개키를 받은 모든 클라이언트',
+          '인증서를 발급한 CA',
+          '서버 개인키를 가진 서버뿐'
+        ],
+        answer: 2,
+        explanation: '공개키로 잠근 데이터는 짝이 되는 개인키로만 풀 수 있습니다. 공개키는 누구나 받을 수 있지만 개인키는 서버만 갖고 있으므로, 패킷을 가로챈 공격자도 인증서를 발급한 CA도 이 값을 알 수 없습니다.'
+      },
+      {
+        q: 'Q11. 공격자가 공용 Wi-Fi에서 ARP 스푸핑으로 사용자의 프레임을 가로챘습니다. 사용자가 HTTPS 사이트를 쓰는 중이라면 공격자가 볼 수 있는 정보는?',
+        options: [
+          '접속한 서버의 IP 주소와 포트(443), 핸드셰이크에 담긴 도메인 이름(SNI)',
+          '로그인 비밀번호와 쿠키',
+          '요청한 상세 URL 경로와 쿼리 파라미터'
+        ],
+        answer: 0,
+        explanation: '패킷을 배달하려면 IP 주소와 포트는 평문이어야 하고, 초기 핸드셰이크의 SNI에도 도메인 이름이 드러납니다. 그 위의 HTTP 메시지(URL 경로, 쿼리, 쿠키, 본문)는 TLS로 암호화되어 있어 가로채도 해독할 수 없습니다.'
+      },
+      {
+        q: 'Q12. 대칭키 암호화만으로 통신할 때 생기는 "키 배송 문제"란?',
+        options: [
+          '대칭키는 길이가 짧아 쉽게 추측된다는 문제',
+          '암호화와 복호화에 같은 키를 쓰므로, 처음 키를 상대에게 건넬 때 가로채이면 이후 통신이 모두 해독된다는 문제',
+          '대칭키 연산이 느려 대용량 데이터에 쓸 수 없다는 문제'
+        ],
+        answer: 1,
+        explanation: '대칭키는 빠르지만 양측이 같은 키를 미리 나눠 가져야 합니다. HTTPS는 이 키(세션키)를 만들 재료를 비대칭키로 안전하게 전달하고, 실제 데이터는 대칭키로 암호화합니다. 연산이 느린 쪽은 대칭키가 아니라 비대칭키입니다.'
+      },
+      {
+        q: 'Q13. CA 인증서 검증에서 키의 쓰임을 바르게 설명한 것은?',
+        options: [
+          'CA는 자신의 개인키로 인증서에 서명하고, 브라우저는 미리 내장된 CA 공개키로 그 서명을 검증한다',
+          '서버가 자신의 개인키를 브라우저에 보내면 브라우저가 이를 CA에 조회한다',
+          '브라우저가 접속할 때마다 CA에서 개인키를 받아 인증서를 복호화한다'
+        ],
+        answer: 0,
+        explanation: '서명은 개인키로 만들고 공개키로 확인합니다. CA 개인키는 CA만 갖고 있으므로, CA 공개키로 서명이 확인되면 그 인증서는 CA가 발급한 것이고 내용(도메인, 서버 공개키)도 바뀌지 않았다는 뜻입니다. 개인키는 어떤 경우에도 네트워크로 보내지 않습니다.'
+      },
+      {
+        q: 'Q14. 개발 서버에 직접 만든 자체 서명(Self-signed) 인증서를 붙이고 접속했더니 브라우저가 경고를 띄웠습니다. 이유는?',
+        options: [
+          '자체 서명 인증서는 암호화 기능이 없어서',
+          '자체 서명 인증서는 443번이 아닌 80번 포트로만 접속되어서',
+          '인증서에 서명한 주체가 브라우저에 내장된 신뢰 CA 목록에 없어 서버 신원을 검증할 수 없어서'
+        ],
+        answer: 2,
+        explanation: '자체 서명 인증서도 암호화는 똑같이 됩니다. 다만 신뢰할 수 있는 CA의 서명이 없으니 공격자가 만든 가짜 인증서와 구별할 방법이 없습니다. 그래서 브라우저는 신원 인증이 안 된 연결로 보고 경고합니다.'
+      },
+      {
+        q: 'Q15. AES-GCM 같은 AEAD 방식이 HTTPS 데이터 전송에서 해 주는 일은?',
+        options: [
+          'CA 대신 서버의 신원을 증명한다',
+          '유실된 패킷을 자동으로 재전송한다',
+          '데이터를 암호화하면서 인증 태그를 붙여, 전송 중 위변조 여부까지 검증한다'
+        ],
+        answer: 2,
+        explanation: 'AEAD는 기밀성(암호화)과 무결성(위변조 검증)을 한 번에 처리합니다. 서버 신원 증명은 인증서가 맡고, 유실 패킷 재전송은 TCP가 맡습니다.'
+      },
+      {
+        q: 'Q16. OSI 탭의 세션 계층에 소개된 ECDHE 키 교환은 완전 순방향 비밀성(PFS)을 제공합니다. 이 성질의 의미로 옳은 것은?',
+        options: [
+          '서버 개인키가 나중에 유출되더라도, 미리 녹화해 둔 과거 통신은 복호화할 수 없다',
+          '한 번 만든 세션키를 계속 재사용해 재접속 속도를 높인다',
+          '클라이언트의 IP 주소를 암호화해 외부에서 숨긴다'
+        ],
+        answer: 0,
+        explanation: 'ECDHE는 접속할 때마다 일회용 키 쌍으로 세션키를 합의하고 버립니다. 서버의 장기 개인키는 핸드셰이크에 서명해 신원을 증명하는 데만 쓰이고 세션키 계산에는 들어가지 않으므로, 개인키가 나중에 유출돼도 과거 세션키를 되살릴 수 없습니다. 시뮬레이터의 RSA 방식처럼 Pre-Master Secret을 서버 공개키로 암호화해 보내면 이 성질이 없어서, TLS 1.3은 RSA 키 교환을 없앴습니다.'
+      },
+      {
+        q: 'Q17. TLS Session Resumption(Session ID, Session Ticket)을 쓰는 이유는?',
+        options: [
+          '인증서 유효기간을 늘리려고',
+          '재접속할 때 이전 세션 정보를 재사용해 전체 핸드셰이크를 생략하거나 줄여 연결 지연을 줄이려고',
+          '세션키 없이 평문으로 빠르게 통신하려고'
+        ],
+        answer: 1,
+        explanation: '이전 세션 정보를 남겨 두면 재접속 때 인증서 검증과 키 교환을 처음부터 다시 하지 않아도 됩니다. TLS 1.3은 0-RTT로 첫 요청을 핸드셰이크와 함께 보낼 수도 있습니다. 재개한 연결도 세션키로 암호화됩니다.'
+      },
+      {
+        q: 'Q18. 송신 측에서 데이터가 아래 계층으로 내려가며 헤더가 붙는 캡슐화 과정에서, 계층별 데이터 단위를 바르게 짝지은 것은?',
+        options: [
+          'L4 세그먼트(TCP 기준), L3 패킷, L2 프레임',
+          'L4 프레임, L3 세그먼트, L2 패킷',
+          'L4 패킷, L3 프레임, L2 세그먼트'
+        ],
+        answer: 0,
+        explanation: 'TCP는 응용 데이터에 TCP 헤더를 붙여 세그먼트(UDP는 데이터그램)를 만들고, L3가 IP 헤더를 붙여 패킷을, L2가 MAC 헤더를 붙여 프레임을 만듭니다. L1은 이 프레임을 비트 신호로 보냅니다. 수신 측은 역순으로 헤더를 벗겨 냅니다.'
+      },
+      {
+        q: 'Q19. OSI 계층과 주소, 장비를 바르게 짝지은 것은?',
+        options: [
+          'L2는 MAC 주소를 보고 스위치가 프레임을 전달하고, L3는 IP 주소를 보고 라우터가 경로를 정한다',
+          'L2는 IP 주소를 보고 라우터가 경로를 정하고, L3는 MAC 주소를 보고 스위치가 전달한다',
+          'L4는 MAC 주소를 보고 전달하고, L3는 포트 번호를 보고 전달한다'
+        ],
+        answer: 0,
+        explanation: 'MAC 주소는 같은 네트워크 안에서 바로 옆 장비까지 프레임을 넘길 때 쓰는 2계층 주소입니다. 여러 네트워크를 건너 목적지 서버까지 가는 길은 3계층의 IP 주소를 보고 라우터가 정합니다. 포트 번호는 4계층 정보입니다.'
+      },
+      {
+        q: 'Q20. 현대 TCP/IP 4계층 모델에서 OSI의 L5~L7과 TLS의 위치는 어떻게 설명하나요?',
+        options: [
+          'L5~L7을 전송 계층으로 묶고, TLS는 3계층 프로토콜로 분류한다',
+          'L5~L7을 네트워크 접근 계층으로 묶고, TLS는 2계층에서 동작한다',
+          'L5~L7을 하나의 응용 계층으로 묶고, TLS는 전송 계층 위의 보안 계층(4.5계층)으로 설명하기도 한다'
+        ],
+        answer: 2,
+        explanation: 'TCP/IP 모델은 네트워크 접근, 인터넷, 전송, 응용의 4계층입니다. OSI의 L5~L7은 응용 계층 하나로 묶이고, TLS는 TCP 바로 위에서 응용 데이터를 암호화하므로 4.5계층으로 부르기도 합니다. 이 페이지가 TLS를 L5, L6에 두는 것은 OSI 모델의 역할(세션 수립, 암호화)에 맞춰 설명한 것입니다.'
+      },
+      {
+        q: 'Q21. WPA2나 WPA3로 암호화된 Wi-Fi에 접속해 있으면 HTTP 사이트에 비밀번호를 보내도 안전할까요?',
+        options: [
+          '예. WPA2와 WPA3가 서버까지 전 구간을 암호화한다',
+          '아니요. WPA2와 WPA3는 기기와 공유기 사이 무선 구간만 암호화하므로, 공유기 너머 구간에서는 HTTP 평문이 그대로 노출된다',
+          '예. WPA3는 HTTP 요청을 자동으로 HTTPS로 바꿔 준다'
+        ],
+        answer: 1,
+        explanation: '무선 구간 암호화는 2계층에서 기기와 공유기(AP) 사이만 보호합니다. 공유기를 지나 인터넷으로 나가면 HTTP 데이터는 다시 평문입니다. 서버까지 보호하려면 6계층의 TLS, 즉 HTTPS가 필요합니다.'
+      },
+      {
+        q: 'Q22. https://bank.example.com:8443 처럼 URL에 포트를 직접 적었을 때의 설명으로 옳은 것은?',
+        options: [
+          '포트를 적어도 https:// 스킴이면 브라우저는 항상 443번으로 접속한다',
+          '8443은 Well-Known 포트라 리눅스에서는 관리자 권한이 있어야 열 수 있다',
+          '브라우저는 기본값 443 대신 8443번으로 접속하며, 8443은 Registered 포트 구간(1024~49151)에 속한다'
+        ],
+        answer: 2,
+        explanation: '브라우저는 포트를 생략했을 때만 스킴에 맞는 Well-Known 포트(http는 80, https는 443)를 채워 넣습니다. 포트를 적으면 그 번호로 접속합니다. 8443은 대체 HTTPS 포트로 흔히 쓰는 Registered 포트라, 관리자 권한 없이 WAS를 띄우거나 관리자 페이지를 분리할 때 씁니다.'
+      },
+      {
+        q: 'Q23. 내 PC(192.168.0.15)가 203.0.113.10:443에 접속할 때 출발지 포트가 54322로 찍혔습니다. 이 포트에 대한 설명으로 옳은 것은?',
+        options: [
+          '응답을 돌려받으려고 운영체제가 임시로 할당한 동적(Ephemeral) 포트이며, 통신이 끝나면 반납된다',
+          '서버가 지정해 준 Well-Known 포트다',
+          '브라우저 제조사가 IANA에 등록해 고정으로 쓰는 포트다'
+        ],
+        answer: 0,
+        explanation: '클라이언트 쪽 포트는 운영체제가 연결마다 자동으로 고릅니다. IANA 기준 동적 포트 구간은 49152~65535이고 54322도 여기에 속합니다. 서버는 이 포트 번호를 목적지로 삼아 응답을 돌려보냅니다.'
+      },
+      {
+        q: 'Q24. Tomcat 같은 WAS를 80번 대신 8080번 포트로 띄우는 경우가 많은 이유로 가장 알맞은 것은?',
+        options: [
+          '8080번 포트만 TCP를 지원해서',
+          '리눅스와 유닉스에서는 0~1023번 Well-Known 포트를 열려면 관리자(root) 권한이 필요해서',
+          '80번 포트는 HTTPS 전용으로 예약되어 있어서'
+        ],
+        answer: 1,
+        explanation: '1023번 이하 포트는 관리자 권한이 있어야 열 수 있어, 애플리케이션을 일반 계정으로 실행할 때는 8080 같은 Registered 포트를 씁니다. 외부의 80, 443은 앞단 웹 서버가 받고 내부 WAS의 8080으로 넘기는 구성이 흔합니다.'
+      },
+      {
+        q: 'Q25. 원격 접속에 Telnet(23번) 대신 SSH(22번)를 쓰는 주된 이유는?',
+        options: [
+          'Telnet은 비밀번호를 포함한 모든 입력을 평문으로 보내지만, SSH는 통신 전체를 암호화하기 때문',
+          'SSH는 UDP를 써서 Telnet보다 빠르기 때문',
+          'IANA가 23번 포트를 폐지해 더 이상 쓸 수 없기 때문'
+        ],
+        answer: 0,
+        explanation: 'Telnet은 HTTP처럼 암호화가 없어서 스니핑하면 계정과 명령어가 그대로 보입니다. SSH는 접속 과정부터 암호화하고, 같은 22번 포트로 보안 파일 전송(SFTP)도 제공합니다.'
+      },
+      {
+        q: 'Q26. DNS(53번)와 DoT(853번)의 차이로 옳은 것은?',
+        options: [
+          'DoT는 메일 전송용이고 DNS는 웹 전송용이다',
+          '둘 다 평문이고 포트 번호만 다르다',
+          'DNS는 도메인을 IP로 바꾸는 질의를 평문으로 보내고, DoT는 같은 질의를 TLS로 암호화해 TCP 853번으로 보낸다'
+        ],
+        answer: 2,
+        explanation: '평문 DNS는 내가 어떤 도메인을 조회하는지 경로 중간에서 볼 수 있습니다. DoT는 HTTP에 TLS를 씌운 HTTPS처럼 DNS에 TLS를 씌워 질의 내용을 보호합니다. 평문 프로토콜과 보안 프로토콜이 서로 다른 포트를 쓰는 예입니다.'
+      },
+      {
+        q: 'Q27. 웹 서버 하나가 443번 포트 하나로 수천 명의 접속을 동시에 받을 수 있는 이유는?',
+        options: [
+          '서버가 접속자마다 443번 포트를 복제해 새 포트 번호를 만들기 때문',
+          '한 번에 한 명만 처리하고 나머지 요청은 버리기 때문',
+          '연결마다 클라이언트 IP와 포트, 서버 IP와 포트의 조합이 달라 운영체제가 각 연결을 구분할 수 있기 때문'
+        ],
+        answer: 2,
+        explanation: 'TCP 연결은 출발지 IP:포트와 목적지 IP:포트 한 쌍(소켓 쌍)으로 식별됩니다. 서버 쪽이 모두 203.0.113.10:443이어도 클라이언트 IP나 동적 포트가 다르면 서로 다른 연결입니다.'
+      },
+      {
+        q: 'Q28. TCP 3-Way Handshake의 순서로 옳은 것은?',
+        options: [
+          'SYN → SYN-ACK → ACK',
+          'SYN → ACK → SYN-ACK',
+          'ACK → SYN → FIN'
+        ],
+        answer: 0,
+        explanation: '클라이언트가 연결 요청(SYN)을 보내고, 서버가 요청을 받았다는 확인과 자신의 연결 요청을 함께(SYN-ACK) 보내며, 클라이언트가 이를 확인(ACK)하면 연결이 ESTABLISHED 상태가 됩니다. TCP 기반 HTTPS는 이 연결이 맺어진 뒤에 TLS 핸드셰이크를 시작합니다.'
+      },
+      {
+        q: 'Q29. TCP vs UDP 시뮬레이터에서 패킷 #2가 유실됐을 때 TCP 쪽 동작으로 옳은 것은?',
+        options: [
+          '#1, #3, #4만 애플리케이션에 바로 넘기고 #2는 포기한다',
+          '먼저 도착한 #3, #4를 수신 버퍼에 두고 중복 ACK로 누락을 알리며, #2가 재전송되면 #1~#4를 순서대로 넘긴다',
+          '연결을 끊고 3-Way Handshake부터 다시 시작한다'
+        ],
+        answer: 1,
+        explanation: 'TCP는 순서 번호로 빈 자리를 알아차리고, 같은 ACK를 반복해 보내(Duplicate ACK) 송신 측에 누락을 알립니다. 송신 측이 #2를 재전송하면 수신 측은 버퍼에 있던 #3, #4와 합쳐 순서대로 애플리케이션에 넘깁니다.'
+      },
+      {
+        q: 'Q30. 같은 상황(패킷 #2 유실)에서 UDP 수신 측이 받는 결과는?',
+        options: [
+          '[#1, #3, #4]를 받고, #2는 재전송 없이 빠진 채로 끝난다',
+          '#2가 재전송될 때까지 #3, #4를 버퍼에 두고 기다린다',
+          '수신 측이 ACK로 #2를 다시 요청해 [#1, #2, #3, #4]를 받는다'
+        ],
+        answer: 0,
+        explanation: 'UDP에는 순서 번호도 ACK도 없어 유실을 알아차리거나 다시 요청하지 않습니다. 실시간 영상이나 음성은 지난 데이터를 기다리기보다 잠깐 끊기고 최신 데이터를 바로 재생하는 편이 낫기 때문에, 이 성질이 오히려 장점이 됩니다.'
+      },
+      {
+        q: 'Q31. TCP 헤더(20~60바이트)에는 있지만 UDP 헤더(고정 8바이트)에는 없는 필드는?',
+        options: [
+          '순서 번호(Sequence Number)와 확인 응답 번호(Acknowledgment Number)',
+          '출발지 포트와 목적지 포트',
+          '오류 검출 체크섬'
+        ],
+        answer: 0,
+        explanation: 'UDP 헤더는 출발지 포트, 목적지 포트, 길이, 체크섬 네 필드뿐입니다. 순서 번호, ACK 번호, 제어 플래그, 윈도우 크기는 TCP에만 있으며, 이 필드들 덕분에 TCP가 순서와 신뢰성을 보장합니다.'
+      },
+      {
+        q: 'Q32. TCP 헤더의 윈도우 크기(Window Size) 필드가 하는 일은?',
+        options: [
+          '패킷이 도착할 목적지 IP 주소를 지정한다',
+          'TLS 세션키의 길이를 지정한다',
+          '수신 측이 지금 받을 수 있는 버퍼 여유를 알려, 송신 측이 보내는 양을 조절하게 하는 흐름 제어'
+        ],
+        answer: 2,
+        explanation: '수신 측 버퍼가 가득 차면 보낸 데이터가 버려집니다. 윈도우 크기로 남은 버퍼를 알려 주면 송신 측이 그만큼만 보냅니다. 네트워크 전체가 붐빌 때 전송 속도를 줄이는 혼잡 제어와는 구분합니다.'
+      },
+      {
+        q: 'Q33. 다음 중 TCP보다 UDP가 더 알맞은 서비스는?',
+        options: [
+          '계좌 이체 같은 금융 거래',
+          '실시간 화상 통화나 온라인 FPS 게임',
+          '이메일 발송(SMTP)'
+        ],
+        answer: 1,
+        explanation: '실시간 서비스는 조금 유실되더라도 지연이 적은 편이 중요해서, 연결 절차와 재전송이 없는 UDP를 씁니다. 금융 거래나 메일은 데이터가 하나라도 빠지면 안 되므로 TCP를 씁니다.'
+      },
+      {
+        q: 'Q34. HTTP/3에 대한 설명으로 옳은 것은?',
+        options: [
+          'TCP 위에서 TLS 1.2를 써야만 동작한다',
+          '암호화를 쓰지 않기 때문에 HTTP/1.1보다 빠르다',
+          'UDP 위에 TLS 1.3을 내장한 QUIC 프로토콜을 쓰며, 재전송 같은 신뢰성 기능은 QUIC이 직접 처리한다'
+        ],
+        answer: 2,
+        explanation: 'HTTP/1.1과 HTTP/2는 TCP 위에서 동작하지만, HTTP/3는 UDP 위의 QUIC을 씁니다. QUIC은 연결 수립과 TLS 1.3 핸드셰이크를 한 번에 처리해 지연을 줄이고, 유실된 패킷의 재전송도 직접 맡습니다. 포트 표에서 443번의 전송 계층이 TCP와 UDP(QUIC)로 함께 적힌 이유입니다.'
+      },
+      {
+        q: 'Q35. DNS 질의가 주로 UDP를 쓰는 이유로 가장 알맞은 것은?',
+        options: [
+          '질의와 응답이 짧은 한 번의 왕복이라, 핸드셰이크 없이 바로 보내는 편이 빠르기 때문',
+          'UDP가 TCP보다 신뢰성이 높기 때문',
+          'UDP는 데이터를 자동으로 암호화하기 때문'
+        ],
+        answer: 0,
+        explanation: '도메인 하나를 묻고 IP 하나를 받는 데 3-Way Handshake까지 하면 왕복이 늘어납니다. 그래서 DNS는 보통 UDP 53번을 쓰고, 응답이 커서 한 번에 담기지 않을 때 등에는 TCP 53번을 씁니다. 포트 표에 DNS의 전송 계층이 UDP와 TCP로 함께 적힌 이유입니다.'
+      },
+      {
+        q: 'Q36. 3계층 웹 아키텍처에서 서버 배치로 옳은 것은?',
+        options: [
+          'DB를 DMZ에 두어 외부에서 바로 조회할 수 있게 한다',
+          '웹 서버는 외부와 맞닿은 DMZ에 두고, WAS와 DB는 방화벽 안쪽 내부망에 두며, DB는 WAS IP에서 오는 접근만 허용한다',
+          'WAS를 인터넷에 바로 노출하고 웹 서버는 내부망에 둔다'
+        ],
+        answer: 1,
+        explanation: '외부에 열리는 포트(80, 443)는 DMZ의 웹 서버만 갖습니다. 비즈니스 로직을 가진 WAS와 데이터를 가진 DB는 방화벽 뒤에 두어, 웹 서버가 뚫리더라도 한 단계 더 막을 수 있게 합니다.'
+      },
+      {
+        q: 'Q37. 로드밸런싱 구성에서 WAS #1을 재배포하는 동안에도 서비스가 끊기지 않는 이유는?',
+        options: [
+          '앞단 웹 서버가 헬스체크로 응답하지 않는 WAS를 빼고, 정상 WAS로만 요청을 나눠 보내기 때문',
+          '브라우저가 스스로 다른 도메인으로 다시 접속하기 때문',
+          'WAS가 멈추면 DB가 대신 요청을 처리하기 때문'
+        ],
+        answer: 0,
+        explanation: '웹 서버가 리버스 프록시이자 로드밸런서로서 WAS 인스턴스의 상태를 주기적으로 확인합니다. 점검이나 배포 중인 인스턴스는 분산 대상에서 빠지고, 나머지 인스턴스가 라운드 로빈 같은 방식으로 요청을 받습니다.'
+      },
+      {
+        q: 'Q38. 리버스 프록시(Reverse Proxy)에 대한 설명으로 옳은 것은?',
+        options: [
+          '사용자 PC 쪽에 놓여 사용자 대신 외부 사이트에 접속해 주는 프록시다',
+          'DB 쿼리 결과를 저장해 두는 캐시 서버다',
+          '서버 앞에서 클라이언트 요청을 대신 받아 뒤쪽 WAS로 전달하며, 클라이언트는 실제 WAS 주소를 몰라도 된다'
+        ],
+        answer: 2,
+        explanation: '리버스 프록시는 서버 쪽에 놓여 요청을 받아 내부 서버로 넘깁니다. 이 자리에서 SSL Termination, 정적 파일 응답, 로드밸런싱을 함께 처리합니다. 사용자 쪽에서 대신 접속해 주는 것은 포워드 프록시입니다.'
+      },
+      {
+        q: 'Q39. Nginx가 적은 메모리로 수만 개의 동시 접속을 처리할 수 있는 이유로 소개된 구조는?',
+        options: [
+          '접속마다 새 프로세스를 띄우는 구조',
+          '모든 요청을 DB에 저장한 뒤 차례로 처리하는 구조',
+          '비동기 이벤트 기반(Event-Driven) 구조'
+        ],
+        answer: 2,
+        explanation: 'Nginx는 소수의 워커 프로세스가 이벤트 루프로 여러 연결을 번갈아 처리합니다. 접속마다 프로세스나 스레드를 새로 만드는 방식보다 메모리와 문맥 전환 비용이 적어, 동시 접속이 많을 때 유리합니다.'
+      },
+      {
+        q: 'Q40. 웹 서버와 WAS를 바르게 분류한 것은?',
+        options: [
+          '웹 서버: Nginx, WebtoB, IIS, Apache HTTP Server / WAS: Tomcat, JEUS, WebLogic, Kestrel',
+          '웹 서버: Tomcat, JEUS / WAS: Nginx, IIS',
+          '웹 서버: WebLogic, Kestrel / WAS: WebtoB, Apache HTTP Server'
+        ],
+        answer: 0,
+        explanation: '웹 서버는 정적 파일 응답, 리버스 프록시, SSL Termination을 맡고, WAS는 애플리케이션 코드를 실행해 동적 응답을 만듭니다. 실무에서는 Nginx와 Tomcat, WebtoB와 JEUS, IIS와 Kestrel처럼 짝지어 씁니다.'
+      },
+      {
+        q: 'Q41. "HTTPS는 암호화 때문에 HTTP보다 항상 느리다"는 주장에 대한 설명으로 가장 알맞은 것은?',
+        options: [
+          '맞다. HTTPS는 요청마다 인증서를 처음부터 다시 검증하므로 항상 느리다',
+          '초기 TLS 왕복(TLS 1.3 기준 1-RTT)이 더해지지만, 브라우저가 HTTP/2와 HTTP/3를 HTTPS에서만 지원하므로 실제 로딩은 오히려 빠른 경우가 많다',
+          'HTTPS는 핸드셰이크가 없어서 HTTP보다 항상 빠르다'
+        ],
+        answer: 1,
+        explanation: 'TLS 핸드셰이크는 연결을 맺을 때 한 번 하고, 그 뒤 요청은 같은 세션키로 처리합니다. 대칭키 암호화는 현대 CPU에서 부담이 작습니다. 브라우저는 HTTP/2와 HTTP/3를 암호화된 연결에서만 쓰므로, 한 연결로 여러 요청을 동시에 보내는 이점도 HTTPS에서만 얻습니다.'
+      },
+      {
+        q: 'Q42. 공용 Wi-Fi 운영자가 HTTP 페이지 응답 중간에 광고 스크립트를 끼워 넣었습니다. 같은 페이지가 HTTPS였다면 어떻게 될까요?',
+        options: [
+          '응답을 고치면 MAC/AEAD 인증 태그 검증에 실패하므로, 브라우저가 변조된 데이터를 받아들이지 않는다',
+          '똑같이 끼워 넣을 수 있다. HTTPS는 내용을 숨길 뿐 변조는 막지 못한다',
+          '광고 삽입은 막지 못하고 비밀번호 같은 입력값만 보호된다'
+        ],
+        answer: 0,
+        explanation: 'HTTP에는 무결성 검증이 없어 경로 중간에서 응답을 고쳐도 브라우저가 알아차리기 어렵습니다. HTTPS는 TLS 레코드마다 인증 태그를 붙이므로, 한 바이트라도 바뀌면 검증에 실패하고 연결이 끊깁니다.'
+      }
+    ];
+
+    function renderQuiz() {
+      const container = document.getElementById('quiz-container');
+      if (!container) return;
+
+      container.innerHTML = QUIZ_DATA.map((item, qIdx) => {
+        const userChoice = state.quizAnswers[qIdx];
+        const isAnswered = userChoice !== undefined;
+
+        return `
+          <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-3">
+            <p class="text-sm font-bold text-slate-900 dark:text-white">${item.q}</p>
+            <div class="space-y-2">
+              ${item.options.map((opt, optIdx) => {
+                let btnStyle = 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-indigo-400';
+                if (isAnswered) {
+                  if (optIdx === item.answer) {
+                    btnStyle = 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-500 text-emerald-800 dark:text-emerald-200 font-semibold';
+                  } else if (optIdx === userChoice) {
+                    btnStyle = 'bg-rose-50 dark:bg-rose-950/50 border-rose-500 text-rose-800 dark:text-rose-200';
+                  } else {
+                    btnStyle = 'bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 opacity-60';
+                  }
+                }
+                return `
+                  <button onclick="selectQuizOption(${qIdx}, ${optIdx})"
+                    class="w-full text-left p-3 rounded-xl border text-xs sm:text-sm transition-all flex items-center gap-2.5 ${btnStyle}">
+                    <span class="w-5 h-5 rounded-full border border-current flex items-center justify-center text-[11px] font-bold shrink-0">
+                      ${optIdx + 1}
+                    </span>
+                    <span>${opt}</span>
+                  </button>
+                `;
+              }).join('')}
+            </div>
+            ${isAnswered ? `
+              <div class="p-3 rounded-xl text-xs leading-relaxed ${userChoice === item.answer ? 'bg-emerald-100/70 dark:bg-emerald-900/30 text-emerald-900 dark:text-emerald-200' : 'bg-amber-100/70 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200'}">
+                ${userChoice === item.answer ? '✅ ' : '💡 '} ${item.explanation}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selectQuizOption(qIdx, optIdx) {
+      state.quizAnswers[qIdx] = optIdx;
+      let score = 0;
+      QUIZ_DATA.forEach((item, idx) => {
+        if (state.quizAnswers[idx] === item.answer) score++;
+      });
+      document.getElementById('quiz-score-badge').textContent = `정답: ${score} / ${QUIZ_DATA.length}`;
+      renderQuiz();
+    }
+
+    // 11. 탭 4: OSI 7계층에서 HTTPS 위치 & 보안 메커니즘 시각화
+    const OSI_LAYERS = [
+      {
+        num: 7,
+        name: '응용 계층 (Application Layer)',
+        protocol: 'HTTP (요청/응답 메시지 생성)',
+        roleBadge: 'HTTPS의 본문',
+        isHttpsCore: true,
+        accent: 'indigo',
+        summary: '사용자가 보는 웹 브라우저와 서버 애플리케이션이 직접 대화하는 최상위 계층입니다. 순수 HTTP 요청(GET/POST, 헤더, 쿠키, JSON 본문)이 이곳에서 만들어집니다.',
+        howSecurityWorks: '7계층 자체(순수 HTTP)에는 암호화 기능이 전혀 없습니다. 대신 생성된 HTTP 메시지 전체를 바로 아래 6계층(TLS)으로 내려보내 통째로 암호화하도록 맡깁니다.',
+        keyTech: ['HTTP/1.1, HTTP/2, HTTP/3', 'Cookie / Authorization 헤더', 'REST API JSON / HTML']
+      },
+      {
+        num: 6,
+        name: '표현 계층 (Presentation Layer)',
+        protocol: 'TLS / SSL (암호화 · 복호화 · 데이터 변환)',
+        roleBadge: '🔒 HTTPS 핵심 보안 계층',
+        isHttpsCore: true,
+        accent: 'emerald',
+        summary: '데이터의 형식 변환, 압축, 그리고 <strong>암호화 및 복호화</strong>를 담당하는 계층입니다. HTTPS의 핵심 엔진인 <strong>TLS(SSL)</strong>가 실질적인 데이터 암호화를 수행하는 중심 위치입니다.',
+        howSecurityWorks: '7계층에서 내려온 HTTP 평문 데이터를 협상된 <strong>대칭키(AES-256-GCM 등)</strong>로 암호화하고, 중간 위변조를 탐지하기 위한 <strong>메시지 인증 코드(MAC/AEAD 태그)</strong>를 부착해 TLS 레코드로 포장합니다.',
+        keyTech: ['AES-256-GCM / ChaCha20-Poly1305', 'AEAD 무결성 검증 태그', 'X.509 디지털 인증서 파싱']
+      },
+      {
+        num: 5,
+        name: '세션 계층 (Session Layer)',
+        protocol: 'TLS Handshake (인증 · 키 교환 · 세션 유지)',
+        roleBadge: '🔒 HTTPS 협상·세션 계층',
+        isHttpsCore: true,
+        accent: 'emerald',
+        summary: '양 끝단(클라이언트-서버) 간의 대화 세션을 열고, 인증하고, 유지 및 종료하는 계층입니다. TLS 핸드셰이크의 신원 검증과 세션키 합의 과정이 이 계층의 역할에 해당합니다.',
+        howSecurityWorks: '<strong>Client Hello ↔ Server Hello</strong>를 통해 암호화 규격(Cipher Suite)을 협상하고, <strong>CA 인증서 검증</strong>과 <strong>비대칭키(ECDHE/RSA) 키 교환</strong>으로 양측만 아는 세션키를 확립합니다. 또한 TLS Session ID/Ticket으로 재접속 시 빠른 세션 재개를 지원합니다.',
+        keyTech: ['TLS 1.3 Handshake', 'ECDHE 키 교환 (완전 순방향 비밀성)', 'TLS Session Resumption (0-RTT)']
+      },
+      {
+        num: 4,
+        name: '전송 계층 (Transport Layer)',
+        protocol: 'TCP (Port 443) / QUIC(UDP)',
+        roleBadge: '포트 & 신뢰성 전송',
+        isHttpsCore: false,
+        accent: 'slate',
+        summary: '응용 프로그램의 포트 번호를 식별하고 데이터가 유실 없이 순서대로 도착하도록 보장하는 계층입니다. HTTP는 80번, HTTPS는 <strong>443번 포트</strong>를 사용합니다.',
+        howSecurityWorks: '전송 계층(TCP) 자체는 페이로드 내용을 암호화하지 않고 <strong>TCP 3-Way Handshake</strong>로 신뢰성 있는 파이프만 제공합니다. 단, 최신 <strong>HTTP/3</strong>에서는 UDP 위에 TLS 1.3을 내장한 QUIC 프로토콜을 사용합니다.',
+        keyTech: ['TCP Port 443 (HTTPS 표준)', 'TCP 3-Way Handshake', '순서 번호(Seq) 및 재전송(ACK)']
+      },
+      {
+        num: 3,
+        name: '네트워크 계층 (Network Layer)',
+        protocol: 'IP (IPv4 / IPv6 라우팅)',
+        roleBadge: '출발지/목적지 IP 경로',
+        isHttpsCore: false,
+        accent: 'slate',
+        summary: '수많은 라우터를 거쳐 출발지 IP에서 목적지 서버 IP까지 패킷의 최적 경로를 찾아 전달하는 계층입니다.',
+        howSecurityWorks: '전 세계 라우터들이 목적지를 찾아 배달해야 하므로 <strong>출발지 IP와 목적지 IP 헤더는 암호화되지 않고 평문으로 유지</strong>됩니다. (IP 자체를 숨기려면 별도의 VPN/IPsec이 필요합니다.)',
+        keyTech: ['IPv4 / IPv6 헤더', '라우팅 테이블 & 패킷 포워딩', 'ICMP']
+      },
+      {
+        num: 2,
+        name: '데이터 링크 계층 (Data Link Layer)',
+        protocol: 'Ethernet / Wi-Fi (MAC 주소)',
+        roleBadge: '로컬 구간 프레임 전달',
+        isHttpsCore: false,
+        accent: 'slate',
+        summary: '공유기(AP), 스위치 등 인접한 물리적 네트워크 장비 간에 MAC 주소를 기반으로 프레임을 전송하는 계층입니다.',
+        howSecurityWorks: '공용 Wi-Fi 환경에서 공격자가 ARP 스푸핑 등으로 2계층 프레임을 가로채더라도, 상위 6계층(TLS)에서 이미 암호화된 상태이므로 HTTPS 본문은 해독할 수 없습니다.',
+        keyTech: ['MAC 주소 (48-bit)', 'Ethernet / IEEE 802.11 Wi-Fi', 'WPA2/WPA3 무선 구간 암호화']
+      },
+      {
+        num: 1,
+        name: '물리 계층 (Physical Layer)',
+        protocol: '광케이블 / 랜선 / 무선 전파 (0과 1 비트)',
+        roleBadge: '전기·빛·전파 신호',
+        isHttpsCore: false,
+        accent: 'slate',
+        summary: '데이터를 전기 신호, 광신호, 무선 전파 등 물리적인 비트(0과 1) 스트림으로 변환하여 전송하는 최하위 계층입니다.',
+        howSecurityWorks: '물리적 케이블 도청이나 무선 전파 감청이 일어나더라도 흐르는 비트 자체가 TLS 암호문이기 때문에 기밀성이 유지됩니다.',
+        keyTech: ['UTP 케이블 / 광섬유', '5G / Wi-Fi RF 전파', '리피터 / 허브']
+      }
+    ];
+
+    let selectedOsiLayer = 6;
+
+    function renderOsiLayers() {
+      const stackContainer = document.getElementById('osi-layer-stack');
+      if (!stackContainer) return;
+
+      stackContainer.innerHTML = OSI_LAYERS.map(layer => {
+        const isSelected = layer.num === selectedOsiLayer;
+        let cardClass = '';
+
+        if (isSelected) {
+          cardClass = layer.isHttpsCore
+            ? 'border-2 border-emerald-500 bg-emerald-50/90 dark:bg-emerald-950/40 shadow-sm'
+            : 'border-2 border-indigo-500 bg-indigo-50/90 dark:bg-indigo-950/40 shadow-sm';
+        } else if (layer.isHttpsCore) {
+          cardClass = 'border border-emerald-300/80 dark:border-emerald-800/70 bg-emerald-50/30 dark:bg-emerald-950/15 hover:border-emerald-400';
+        } else {
+          cardClass = 'border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-700';
+        }
+
+        const badgeClass = layer.num === 7
+          ? 'bg-indigo-600 text-white'
+          : (layer.isHttpsCore ? 'bg-emerald-600 text-white' : 'bg-slate-600 text-white');
+
+        return `
+          <button onclick="selectOsiLayer(${layer.num})"
+            class="w-full text-left p-3 rounded-xl transition-all flex items-center justify-between gap-2 ${cardClass}">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="w-7 h-7 rounded-lg font-mono text-xs font-bold flex items-center justify-center shrink-0 ${badgeClass}">
+                L${layer.num}
+              </span>
+              <div class="min-w-0">
+                <div class="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">${layer.name}</div>
+                <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">${layer.protocol}</div>
+              </div>
+            </div>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+              layer.isHttpsCore
+                ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300'
+                : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+            }">
+              ${layer.roleBadge}
+            </span>
+          </button>
+        `;
+      }).join('');
+
+      renderOsiDetailCard();
+    }
+
+    function selectOsiLayer(layerNum) {
+      selectedOsiLayer = layerNum;
+      renderOsiLayers();
+    }
+
+    function renderOsiDetailCard() {
+      const detailEl = document.getElementById('osi-detail-card');
+      if (!detailEl) return;
+
+      const layer = OSI_LAYERS.find(l => l.num === selectedOsiLayer) || OSI_LAYERS[1];
+
+      detailEl.innerHTML = `
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+          <div class="flex items-center gap-2.5">
+            <span class="px-3 py-1 rounded-xl font-mono text-sm font-bold ${
+              layer.isHttpsCore ? 'bg-emerald-600 text-white' : 'bg-indigo-600 text-white'
+            }">
+              Layer ${layer.num}
+            </span>
+            <div>
+              <h3 class="text-base sm:text-lg font-bold text-slate-900 dark:text-white">${layer.name}</h3>
+              <p class="text-xs font-mono text-slate-500 dark:text-slate-400">${layer.protocol}</p>
+            </div>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-xs font-bold ${
+            layer.isHttpsCore
+              ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+          }">
+            ${layer.roleBadge}
+          </span>
+        </div>
+
+        <div class="space-y-3 text-xs sm:text-sm">
+          <div>
+            <div class="font-bold text-slate-800 dark:text-slate-200 mb-1">📌 계층 핵심 역할</div>
+            <p class="text-slate-600 dark:text-slate-300 leading-relaxed">${layer.summary}</p>
+          </div>
+
+          <div class="p-3.5 rounded-xl ${
+            layer.isHttpsCore
+              ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60'
+              : 'bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700'
+          }">
+            <div class="font-bold ${
+              layer.isHttpsCore ? 'text-emerald-700 dark:text-emerald-300' : 'text-indigo-600 dark:text-indigo-400'
+            } mb-1">
+              🛡️ HTTPS 보안 동작 메커니즘
+            </div>
+            <p class="text-slate-700 dark:text-slate-300 leading-relaxed">${layer.howSecurityWorks}</p>
+          </div>
+
+          <div>
+            <div class="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5">관련 주요 프로토콜 및 기술</div>
+            <div class="flex flex-wrap gap-1.5">
+              ${layer.keyTech.map(tech => `
+                <span class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-xs text-slate-700 dark:text-slate-300">
+                  ${tech}
+                </span>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 12. 탭 5: Well-Known 포트 데이터 및 시뮬레이터
+    const PORT_DEMOS = {
+      http: {
+        url: 'http://bank.example.com',
+        scheme: 'http://',
+        resolvedPort: 80,
+        portCategory: 'Well-Known Port (0~1023)',
+        clientSocket: '192.168.0.15 : 54321 (임시 동적 포트)',
+        serverSocket: '203.0.113.10 : 80 (HTTP 데몬)',
+        securityNote: '⚠️ 포트 번호를 생략했으므로 브라우저가 표준 HTTP Well-Known 포트인 80번으로 자동 연결합니다. 암호화 없이 평문으로 통신합니다.',
+        isSecure: false
+      },
+      https: {
+        url: 'https://bank.example.com',
+        scheme: 'https://',
+        resolvedPort: 443,
+        portCategory: 'Well-Known Port (0~1023)',
+        clientSocket: '192.168.0.15 : 54322 (임시 동적 포트)',
+        serverSocket: '203.0.113.10 : 443 (HTTPS / TLS 데몬)',
+        securityNote: '🔒 https:// 스킴을 보고 브라우저가 표준 HTTPS Well-Known 포트인 443번으로 자동 연결합니다. 연결 즉시 TLS 핸드셰이크를 시작합니다.',
+        isSecure: true
+      },
+      custom: {
+        url: 'https://bank.example.com:8443',
+        scheme: 'https:// (포트 명시)',
+        resolvedPort: 8443,
+        portCategory: 'Registered Port (1024~49151)',
+        clientSocket: '192.168.0.15 : 54323 (임시 동적 포트)',
+        serverSocket: '203.0.113.10 : 8443 (사내 관리자/대체 HTTPS)',
+        securityNote: '🔧 Well-Known 포트(443) 대신 Registered 포트인 8443을 직접 명시한 경우입니다. 관리자 권한 없이 WAS(Tomcat 등)를 띄우거나 관리자 포트를 분리할 때 자주 쓰입니다.',
+        isSecure: true
+      }
+    };
+
+    const WELL_KNOWN_PORTS = [
+      { port: 80, proto: 'HTTP', transport: 'TCP', secure: false, cat: 'web', desc: '암호화되지 않은 일반 웹 페이지 전송 표준 포트' },
+      { port: 443, proto: 'HTTPS (HTTP over TLS)', transport: 'TCP / UDP(QUIC)', secure: true, cat: 'web', desc: 'TLS/SSL로 암호화된 보안 웹 통신 표준 포트' },
+      { port: 22, proto: 'SSH / SFTP', transport: 'TCP', secure: true, cat: 'remote', desc: '암호화된 원격 서버 터미널 접속(SSH) 및 보안 파일 전송(SFTP)' },
+      { port: 23, proto: 'Telnet', transport: 'TCP', secure: false, cat: 'remote', desc: '암호화 없는 구형 원격 접속 (비밀번호 평문 노출로 현재는 SSH로 대체)' },
+      { port: 21, proto: 'FTP (Control)', transport: 'TCP', secure: false, cat: 'remote', desc: '평문 기반 파일 전송 제어 포트 (계정/데이터 노출 위험)' },
+      { port: 53, proto: 'DNS', transport: 'UDP / TCP', secure: false, cat: 'infra', desc: '도메인 이름(example.com)을 IP 주소로 변환하는 네임서버 포트' },
+      { port: 853, proto: 'DoT (DNS over TLS)', transport: 'TCP', secure: true, cat: 'infra', desc: 'DNS 질의 내용을 TLS로 암호화하여 프라이버시를 보호하는 보안 DNS 포트' },
+      { port: 25, proto: 'SMTP', transport: 'TCP', secure: false, cat: 'infra', desc: '메일 서버 간 이메일 발송 기본 포트 (보안 전송 시 465/587번 SMTPS 사용)' }
+    ];
+
+    let selectedPortDemo = 'https';
+    let selectedPortFilter = 'all';
+
+    function renderPortsTab() {
+      selectPortDemo(selectedPortDemo);
+      renderPortsTable();
+    }
+
+    function selectPortDemo(demoKey) {
+      selectedPortDemo = demoKey;
+      ['http', 'https', 'custom'].forEach(k => {
+        const btn = document.getElementById(`port-demo-btn-${k}`);
+        if (!btn) return;
+        if (k === demoKey) {
+          btn.className = 'px-3 py-1.5 rounded-xl text-xs font-mono font-bold border-2 border-indigo-500 bg-indigo-600 text-white shadow-sm transition-all';
+        } else {
+          btn.className = 'px-3 py-1.5 rounded-xl text-xs font-mono font-medium border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-indigo-400 transition-all';
+        }
+      });
+      renderPortDemoStage();
+    }
+
+    function renderPortDemoStage() {
+      const stage = document.getElementById('port-demo-stage');
+      if (!stage) return;
+      const d = PORT_DEMOS[selectedPortDemo];
+
+      stage.innerHTML = `
+        <div class="grid grid-cols-1 lg:grid-cols-11 gap-4 items-center">
+          <!-- 클라이언트 측 -->
+          <div class="lg:col-span-4 p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-1.5">
+            <div class="text-[11px] font-bold uppercase tracking-wider text-indigo-500">1. 클라이언트 (Browser)</div>
+            <div class="font-mono text-xs sm:text-sm font-bold text-slate-900 dark:text-white break-all">${d.url}</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">발신 소켓: <span class="font-mono text-slate-700 dark:text-slate-300">${d.clientSocket}</span></div>
+          </div>
+
+          <!-- 중앙 포트 매핑 화살표 -->
+          <div class="lg:col-span-3 flex flex-col items-center justify-center text-center space-y-1">
+            <span class="px-3 py-1 rounded-full font-mono text-xs font-bold ${
+              d.isSecure ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
+            } shadow">
+              목적지 Port : ${d.resolvedPort}
+            </span>
+            <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400">${d.portCategory}</div>
+            <div class="text-xs text-slate-400">───────▶</div>
+          </div>
+
+          <!-- 서버 측 -->
+          <div class="lg:col-span-4 p-4 rounded-xl bg-white dark:bg-slate-900 border ${
+            d.isSecure ? 'border-emerald-400/70' : 'border-rose-400/70'
+          } space-y-1.5">
+            <div class="text-[11px] font-bold uppercase tracking-wider ${
+              d.isSecure ? 'text-emerald-500' : 'text-rose-500'
+            }">2. 웹 서버 수신 대기 (LISTEN)</div>
+            <div class="font-mono text-xs sm:text-sm font-bold text-slate-900 dark:text-white">${d.serverSocket}</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">방화벽 허용 포트: <strong class="font-mono">${d.resolvedPort}/TCP</strong></div>
+          </div>
+        </div>
+
+        <div class="mt-4 p-3 rounded-xl text-xs leading-relaxed ${
+          d.isSecure
+            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800/60'
+            : 'bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 border border-rose-200 dark:border-rose-800/60'
+        }">
+          ${d.securityNote}
+        </div>
+      `;
+    }
+
+    function filterPortsTable(category) {
+      selectedPortFilter = category;
+      document.querySelectorAll('.port-filter-btn').forEach(btn => {
+        btn.className = 'port-filter-btn px-3 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300';
+      });
+      const activeBtn = document.getElementById(`port-filter-${category}`);
+      if (activeBtn) {
+        activeBtn.className = 'port-filter-btn px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white';
+      }
+      renderPortsTable();
+    }
+
+    function renderPortsTable() {
+      const tbody = document.getElementById('ports-table-body');
+      if (!tbody) return;
+
+      const filtered = selectedPortFilter === 'all'
+        ? WELL_KNOWN_PORTS
+        : WELL_KNOWN_PORTS.filter(item => item.cat === selectedPortFilter);
+
+      tbody.innerHTML = filtered.map(item => `
+        <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+          <td class="py-3.5 px-4 font-mono font-bold text-indigo-600 dark:text-indigo-400">${item.port}</td>
+          <td class="py-3.5 px-4 font-bold text-slate-900 dark:text-white">${item.proto}</td>
+          <td class="py-3.5 px-4 font-mono text-xs text-slate-600 dark:text-slate-300">${item.transport}</td>
+          <td class="py-3.5 px-4">
+            ${item.secure
+              ? '<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300">🔒 암호화 지원</span>'
+              : '<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300">⚠️ 평문 전송</span>'
+            }
+          </td>
+          <td class="py-3.5 px-4 text-slate-600 dark:text-slate-300">${item.desc}</td>
+        </tr>
+      `).join('');
+    }
+
+    // 13. 탭 6: TCP vs UDP 시뮬레이터
+    let tcpUdpTimers = [];
+
+    function renderTcpUdpTab() {
+      resetTcpUdpGrid();
+    }
+
+    function resetTcpUdpGrid() {
+      const tcpGrid = document.getElementById('tcp-packets-grid');
+      const udpGrid = document.getElementById('udp-packets-grid');
+      if (!tcpGrid || !udpGrid) return;
+
+      const packets = [1, 2, 3, 4];
+      tcpGrid.innerHTML = packets.map(n => `
+        <div id="tcp-pkt-${n}" class="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-center">
+          <div class="font-mono text-xs font-bold text-slate-700 dark:text-slate-200">PKT #${n}</div>
+          <div id="tcp-pkt-status-${n}" class="text-[10px] text-slate-400 mt-0.5">대기</div>
+        </div>
+      `).join('');
+
+      udpGrid.innerHTML = packets.map(n => `
+        <div id="udp-pkt-${n}" class="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-center">
+          <div class="font-mono text-xs font-bold text-slate-700 dark:text-slate-200">PKT #${n}</div>
+          <div id="udp-pkt-status-${n}" class="text-[10px] text-slate-400 mt-0.5">대기</div>
+        </div>
+      `).join('');
+    }
+
+    function setPacketCardState(proto, num, statusText, tone) {
+      const card = document.getElementById(`${proto}-pkt-${num}`);
+      const status = document.getElementById(`${proto}-pkt-status-${num}`);
+      if (!card || !status) return;
+
+      status.textContent = statusText;
+      if (tone === 'ok') {
+        card.className = 'p-2 rounded-lg border-2 border-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 text-center transition-all';
+        status.className = 'text-[10px] font-bold text-emerald-600 dark:text-emerald-300 mt-0.5';
+      } else if (tone === 'loss') {
+        card.className = 'p-2 rounded-lg border-2 border-rose-500 bg-rose-50 dark:bg-rose-950/50 text-center transition-all';
+        status.className = 'text-[10px] font-bold text-rose-600 dark:text-rose-300 mt-0.5';
+      } else if (tone === 'wait') {
+        card.className = 'p-2 rounded-lg border-2 border-amber-500 bg-amber-50 dark:bg-amber-950/50 text-center transition-all';
+        status.className = 'text-[10px] font-bold text-amber-600 dark:text-amber-300 mt-0.5';
+      }
+    }
+
+    function appendSimLog(logId, message, colorClass = 'text-slate-300') {
+      const logEl = document.getElementById(logId);
+      if (!logEl) return;
+      const line = document.createElement('div');
+      line.className = colorClass;
+      line.textContent = message;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function runTcpUdpSim(simulateLoss) {
+      tcpUdpTimers.forEach(t => clearTimeout(t));
+      tcpUdpTimers = [];
+      resetTcpUdpGrid();
+
+      const tcpBadge = document.getElementById('tcp-sim-badge');
+      const udpBadge = document.getElementById('udp-sim-badge');
+      const tcpHs = document.getElementById('tcp-hs-status');
+      const tcpLog = document.getElementById('tcp-sim-log');
+      const udpLog = document.getElementById('udp-sim-log');
+      const tcpResult = document.getElementById('tcp-final-result');
+      const udpResult = document.getElementById('udp-final-result');
+
+      tcpLog.innerHTML = '';
+      udpLog.innerHTML = '';
+      tcpResult.textContent = '전송 진행 중...';
+      udpResult.textContent = '전송 진행 중...';
+
+      // --- UDP 시뮬레이션 (핸드셰이크 없이 즉시 발송) ---
+      udpBadge.textContent = '즉시 발송 중';
+      appendSimLog('udp-sim-log', '[0ms] 핸드셰이크 생략! PKT #1~#4 즉시 연속 발사', 'text-amber-300');
+
+      [1, 2, 3, 4].forEach((num, idx) => {
+        const delay = 250 + idx * 250;
+        tcpUdpTimers.push(setTimeout(() => {
+          if (simulateLoss && num === 2) {
+            setPacketCardState('udp', 2, '❌ 유실 (무시)', 'loss');
+            appendSimLog('udp-sim-log', `[${delay}ms] PKT #2 네트워크 유실! (UDP는 재전송 없이 계속 진행)`, 'text-rose-400');
+          } else {
+            setPacketCardState('udp', num, '⚡ 즉시 도착', 'ok');
+            appendSimLog('udp-sim-log', `[${delay}ms] PKT #${num} 수신 완료 (ACK 응답 없음)`, 'text-emerald-300');
+          }
+
+          if (num === 4) {
+            udpBadge.textContent = '전송 완료 (초저지연)';
+            if (simulateLoss) {
+              udpResult.textContent = '[#1, #3, #4] (빠르지만 #2 누락됨)';
+              appendSimLog('udp-sim-log', '→ 실시간 영상/음성에서는 잠깐 끊김으로 넘어가고 최신 프레임을 즉시 재생!', 'text-amber-300');
+            } else {
+              udpResult.textContent = '[#1, #2, #3, #4] (최단 시간 도착)';
+            }
+          }
+        }, delay));
+      });
+
+      // --- TCP 시뮬레이션 (3-Way Handshake 후 순차 전송 및 재전송) ---
+      tcpBadge.textContent = '연결 수립 중';
+      tcpHs.textContent = 'SYN 교환 중...';
+      tcpHs.className = 'font-mono font-bold text-amber-500';
+      appendSimLog('tcp-sim-log', '[0ms] 1단계: TCP 3-Way Handshake 시작 (SYN -> SYN-ACK -> ACK)', 'text-indigo-300');
+
+      tcpUdpTimers.push(setTimeout(() => {
+        tcpHs.textContent = '연결 완료 (ESTABLISHED)';
+        tcpHs.className = 'font-mono font-bold text-emerald-500';
+        tcpBadge.textContent = '신뢰성 전송 중';
+        appendSimLog('tcp-sim-log', '[600ms] 연결 성립 완료! 순차 데이터 전송 시작...', 'text-emerald-300 font-bold');
+      }, 600));
+
+      // PKT #1
+      tcpUdpTimers.push(setTimeout(() => {
+        setPacketCardState('tcp', 1, '✅ ACK 확인', 'ok');
+        appendSimLog('tcp-sim-log', '[950ms] PKT #1 도착 → 수신 측 ACK #1 반환', 'text-emerald-300');
+      }, 950));
+
+      if (!simulateLoss) {
+        [2, 3, 4].forEach((num, idx) => {
+          const delay = 1300 + idx * 350;
+          tcpUdpTimers.push(setTimeout(() => {
+            setPacketCardState('tcp', num, '✅ ACK 확인', 'ok');
+            appendSimLog('tcp-sim-log', `[${delay}ms] PKT #${num} 도착 → 수신 측 ACK #${num} 반환`, 'text-emerald-300');
+            if (num === 4) {
+              tcpBadge.textContent = '신뢰성 전송 완료';
+              tcpResult.textContent = '[#1 → #2 → #3 → #4] (100% 무결성 보장)';
+            }
+          }, delay));
+        });
+      } else {
+        // PKT #2 유실 발생 -> #3, #4 버퍼 대기 -> 재전송 복구
+        tcpUdpTimers.push(setTimeout(() => {
+          setPacketCardState('tcp', 2, '❌ 유실 감지', 'loss');
+          appendSimLog('tcp-sim-log', '[1300ms] ⚠️ PKT #2 중간 유실 발생!', 'text-rose-400');
+        }, 1300));
+
+        tcpUdpTimers.push(setTimeout(() => {
+          setPacketCardState('tcp', 3, '⏳ 순서 대기', 'wait');
+          setPacketCardState('tcp', 4, '⏳ 순서 대기', 'wait');
+          appendSimLog('tcp-sim-log', '[1650ms] PKT #3, #4 도착했으나 #2 누락으로 수신 버퍼에서 대기 (Duplicate ACK 전송)', 'text-amber-300');
+        }, 1650));
+
+        tcpUdpTimers.push(setTimeout(() => {
+          setPacketCardState('tcp', 2, '🔄 재전송 성공', 'ok');
+          setPacketCardState('tcp', 3, '✅ 정렬 완료', 'ok');
+          setPacketCardState('tcp', 4, '✅ 정렬 완료', 'ok');
+          tcpBadge.textContent = '재전송 복구 완료';
+          tcpResult.textContent = '[#1 → #2 → #3 → #4] (유실 복구 후 순서대로 전달!)';
+          appendSimLog('tcp-sim-log', '[2200ms] 🔄 송신 측이 PKT #2 자동 재전송 → #1~#4 순서대로 완벽 복원!', 'text-emerald-300 font-bold');
+        }, 2200));
+      }
+    }
+
+    // 14. 탭 7: 웹 서버(Nginx, WebtoB, IIS) vs WAS 아키텍처 시뮬레이터
+    const SERVER_STACKS = {
+      nginx: {
+        name: 'Nginx + Tomcat',
+        webServer: 'Nginx (Port 443)',
+        wasServer: 'Apache Tomcat (Port 8080)',
+        internalProto: 'HTTP/1.1 Reverse Proxy',
+        certFormat: 'PEM (.crt / .key)',
+        summary: '비동기 이벤트 기반 Nginx가 앞단에서 TLS 1.3 암호화를 해제하고, 정적 파일은 직접 캐싱 응답하며 동적 API 요청만 내부망 Tomcat(Spring Boot)으로 프록시합니다.'
+      },
+      webtob: {
+        name: 'WebtoB + JEUS',
+        webServer: 'WebtoB (Port 443)',
+        wasServer: 'JEUS WAS (WBAPI 소켓)',
+        internalProto: 'WBAPI 전용 고속 소켓 통신',
+        certFormat: 'X.509 SSL 인증서',
+        summary: '국내 은행·공공기관 표준 구성으로, DMZ의 WebtoB가 SSL/TLS 처리와 1차 보안 필터링을 수행하고 내부망 JEUS와 전용 소켓(WBAPI)으로 안정적으로 통신합니다.'
+      },
+      iis: {
+        name: 'IIS + Kestrel/.NET',
+        webServer: 'Windows IIS (Port 443)',
+        wasServer: 'ASP.NET Core Kestrel (Port 5000)',
+        internalProto: 'HTTP Reverse Proxy (ANCM)',
+        certFormat: 'PFX (Windows 인증서 저장소)',
+        summary: 'Windows Server 환경에서 IIS가 HTTPS 인증서 관리(Schannel)와 정적 리소스·Windows 인증을 전담하고, 동적 애플리케이션 로직은 백엔드 Kestrel 프로세스로 전달합니다.'
+      }
+    };
+
+    const SERVER_FLOWS = {
+      static: {
+        requestLabel: 'GET /assets/logo.png HTTP/2',
+        wsAction: '🔒 TLS 복호화 후 로컬 디스크/캐시에서 즉시 응답 (200 OK)',
+        wasReached: false,
+        wasAction: '호출되지 않음 (WAS 자원 100% 절약)',
+        dbReached: false,
+        dbAction: '접근 없음',
+        insight: '정적 파일(이미지, CSS, JS) 요청은 WAS까지 내려가지 않고 앞단 웹 서버에서 즉시 처리합니다. 덕분에 비즈니스 로직을 담당하는 WAS의 스레드와 CPU를 아낄 수 있습니다.'
+      },
+      dynamic: {
+        requestLabel: 'POST /api/v1/payment HTTP/2',
+        wsAction: '🔓 SSL Termination (HTTPS → 내부 평문 요청 변환 후 전달)',
+        wasReached: true,
+        wasAction: '⚙️ 결제 검증 · 세션 확인 · 트랜잭션 비즈니스 로직 실행',
+        dbReached: true,
+        dbAction: '🗄️ 결제 내역 INSERT / 잔액 UPDATE (SQL 커밋)',
+        insight: '민감한 결제 API는 외부 구간에서 HTTPS(443)로 암호화되어 웹 서버에 도착하며, 웹 서버가 인증서로 복호화한 뒤 방화벽 안쪽의 WAS와 DB로 안전하게 전달합니다.'
+      },
+      lb: {
+        requestLabel: 'GET /api/v1/orders (트래픽 폭주 상황)',
+        wsAction: '⚖️ SSL 해제 후 헬스체크를 거쳐 정상 WAS #1 / #2로 라운드 로빈 분산',
+        wasReached: true,
+        wasAction: '🔄 WAS 인스턴스 #1, #2 병렬 분산 처리 (무중단 배포 지원)',
+        dbReached: true,
+        dbAction: '🗄️ 커넥션 풀(Connection Pool)을 통한 안정적 데이터 조회',
+        insight: '웹 서버가 리버스 프록시 및 로드밸런서 역할을 수행하므로, 특정 WAS 서버를 점검하거나 재배포하더라도 웹 서버가 정상 인스턴스로 트래픽을 우회시켜 무중단 서비스가 가능합니다.'
+      }
+    };
+
+    let selectedServerFlow = 'dynamic';
+    let selectedServerStack = 'nginx';
+
+    function renderServerArchTab() {
+      selectServerFlow(selectedServerFlow);
+      selectServerStack(selectedServerStack);
+    }
+
+    function selectServerFlow(flowKey) {
+      selectedServerFlow = flowKey;
+      ['static', 'dynamic', 'lb'].forEach(k => {
+        const btn = document.getElementById(`srv-flow-btn-${k}`);
+        if (!btn) return;
+        if (k === flowKey) {
+          btn.className = 'px-3 py-1.5 rounded-xl text-xs font-bold border-2 border-indigo-500 bg-indigo-600 text-white shadow-sm transition-all';
+        } else {
+          btn.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-indigo-400 transition-all';
+        }
+      });
+      renderServerPipeline();
+    }
+
+    function selectServerStack(stackKey) {
+      selectedServerStack = stackKey;
+      ['nginx', 'webtob', 'iis'].forEach(k => {
+        const btn = document.getElementById(`srv-stack-btn-${k}`);
+        if (!btn) return;
+        if (k === stackKey) {
+          btn.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-sm transition-all';
+        } else {
+          btn.className = 'px-3 py-1 rounded-lg text-xs font-semibold bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition-all';
+        }
+      });
+      renderServerPipeline();
+    }
+
+    function renderServerPipeline() {
+      const stage = document.getElementById('server-pipeline-stage');
+      if (!stage) return;
+
+      const stack = SERVER_STACKS[selectedServerStack];
+      const flow = SERVER_FLOWS[selectedServerFlow];
+
+      stage.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-stretch">
+          <!-- 1단계: 클라이언트 -->
+          <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex flex-col justify-between space-y-2">
+            <div>
+              <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">1. Client (외부망)</span>
+              <h4 class="font-bold text-sm text-slate-900 dark:text-white mt-2">웹 브라우저 / 앱</h4>
+              <p class="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 break-all">${flow.requestLabel}</p>
+            </div>
+            <div class="text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200 dark:border-slate-700">
+              🔒 TLS 1.3 암호화 패킷 전송 (:443)
+            </div>
+          </div>
+
+          <!-- 2단계: DMZ 웹 서버 -->
+          <div class="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border-2 border-emerald-500 flex flex-col justify-between space-y-2 shadow-sm">
+            <div>
+              <div class="flex items-center justify-between gap-1">
+                <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-600 text-white">2. Web Server (DMZ)</span>
+                <span class="text-[10px] font-mono text-emerald-700 dark:text-emerald-300">${stack.certFormat}</span>
+              </div>
+              <h4 class="font-bold text-sm text-slate-900 dark:text-white mt-2">${stack.webServer}</h4>
+              <p class="text-xs text-emerald-900 dark:text-emerald-200 mt-1 leading-relaxed">${flow.wsAction}</p>
+            </div>
+            <div class="text-[11px] font-mono text-emerald-700 dark:text-emerald-300 pt-2 border-t border-emerald-200 dark:border-emerald-800/60">
+              ${flow.wasReached ? `내부 전달: ${stack.internalProto} →` : '⚡ 클라이언트에게 즉시 응답 반환!'}
+            </div>
+          </div>
+
+          <!-- 3단계: 내부망 WAS -->
+          <div class="p-4 rounded-2xl flex flex-col justify-between space-y-2 transition-all ${
+            flow.wasReached
+              ? 'bg-indigo-50/70 dark:bg-indigo-950/30 border-2 border-indigo-500 shadow-sm'
+              : 'bg-slate-100/60 dark:bg-slate-800/30 border border-dashed border-slate-300 dark:border-slate-700 opacity-60'
+          }">
+            <div>
+              <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                flow.wasReached ? 'bg-indigo-600 text-white' : 'bg-slate-300 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+              }">3. WAS (내부 보안망)</span>
+              <h4 class="font-bold text-sm text-slate-900 dark:text-white mt-2">${stack.wasServer}</h4>
+              <p class="text-xs text-slate-700 dark:text-slate-300 mt-1 leading-relaxed">${flow.wasAction}</p>
+            </div>
+            <div class="text-[11px] font-mono text-indigo-600 dark:text-indigo-300 pt-2 border-t border-slate-200 dark:border-slate-700">
+              ${flow.wasReached ? '비즈니스 로직 · 세션 처리 완료' : 'Bypassed (부하 없음)'}
+            </div>
+          </div>
+
+          <!-- 4단계: 데이터베이스 -->
+          <div class="p-4 rounded-2xl flex flex-col justify-between space-y-2 transition-all ${
+            flow.dbReached
+              ? 'bg-amber-50/70 dark:bg-amber-950/25 border-2 border-amber-500 shadow-sm'
+              : 'bg-slate-100/60 dark:bg-slate-800/30 border border-dashed border-slate-300 dark:border-slate-700 opacity-60'
+          }">
+            <div>
+              <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                flow.dbReached ? 'bg-amber-600 text-white' : 'bg-slate-300 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+              }">4. Database (최심부)</span>
+              <h4 class="font-bold text-sm text-slate-900 dark:text-white mt-2">RDBMS / 영속성 계층</h4>
+              <p class="text-xs text-slate-700 dark:text-slate-300 mt-1 leading-relaxed">${flow.dbAction}</p>
+            </div>
+            <div class="text-[11px] font-mono text-amber-700 dark:text-amber-300 pt-2 border-t border-slate-200 dark:border-slate-700">
+              ${flow.dbReached ? '방화벽으로 WAS IP만 접근 허용' : 'Bypassed (접근 없음)'}
+            </div>
+          </div>
+        </div>
+
+        <!-- 선택 스택 및 요청 흐름 해설 박스 -->
+        <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 text-xs space-y-1.5 leading-relaxed">
+          <div class="font-bold text-indigo-600 dark:text-indigo-400">💡 [${stack.name}] 아키텍처 동작 해설</div>
+          <p class="text-slate-700 dark:text-slate-300">${stack.summary}</p>
+          <p class="text-slate-600 dark:text-slate-400"><strong>요청 처리 포인트:</strong> ${flow.insight}</p>
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>
